@@ -214,7 +214,6 @@ def generate_monthly_report_email(period: str, stats: dict) -> str:
                 
                 <p style="margin-top: 20px;">
                     <em>Ce rapport est généré automatiquement le premier jour de chaque mois.</em><br>
-                    <em>Pour toute question, contacter Gaëlle Burdy (Direction qualité) au DECT 2105</em>
                 </p>
             </div>
         </div>
