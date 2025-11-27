@@ -2,20 +2,23 @@
 Configuration de l'application
 """
 
+import os
 from pydantic_settings import BaseSettings
 from typing import Optional
 
 
 class Settings(BaseSettings):
-    # Base de données GAM
-    GAM_DRIVER: str = "oracle.jdbc.OracleDriver"
-    GAM_URL: str
+    # Base de données GAM (Oracle)
+    GAM_HOST: str = "srvorat500.hopital-foch.net"
+    GAM_PORT: int = 1521
+    GAM_SERVICE: str = "AXIN"
     GAM_USER: str
     GAM_PASSWORD: str
 
-    # Base de données ESL
-    ESL_DRIVER: str = "com.microsoft.sqlserver.jdbc.SQLServerDriver"
-    ESL_URL: str
+    # Base de données ESL (SQL Server)
+    ESL_HOST: str = "SRVAPP600.hopital-foch.net"
+    ESL_PORT: int = 1433
+    ESL_DATABASE: str = "master"
     ESL_USER: str
     ESL_PASSWORD: str
 
@@ -35,6 +38,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"
 
 
 settings = Settings()
