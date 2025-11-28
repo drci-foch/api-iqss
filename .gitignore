@@ -11,6 +11,9 @@ outputs/test/*
 *.xlsx
 *.pptx
 *.tar
+*.zip
+*.gz
+
 
 # Distribution / packaging
 .Python
