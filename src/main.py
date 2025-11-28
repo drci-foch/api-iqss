@@ -16,8 +16,8 @@ import numpy as np
 import pandas as pd
 
 from config import settings
-from data_processing import generate_report_data
-from pptx_generator import generate_powerpoint
+from generate_files import generate_report_data
+from excel_generator import generate_excel
 from email_sender import send_monthly_report, send_test_email
 
 # Créer l'application FastAPI
@@ -30,7 +30,6 @@ app = FastAPI(
 # Créer les dossiers nécessaires
 OUTPUT_DIR = Path("outputs")
 OUTPUT_DIR.mkdir(exist_ok=True)
-
 STATIC_DIR = Path("static")
 STATIC_DIR.mkdir(exist_ok=True)
 
@@ -45,14 +44,6 @@ class ReportByDateRequest(BaseModel):
 class ReportBySejoursRequest(BaseModel):
     sejour_ids: List[str]
     send_email: bool = False
-
-
-class ReportResponse(BaseModel):
-    success: bool
-    message: str
-    pptx_path: Optional[str] = None
-    excel_path: Optional[str] = None
-    statistics: Optional[dict] = None
 
 
 # Routes
@@ -343,15 +334,13 @@ async def read_root():
         
         <div class="container">
             <div class="intro-section">
-                <h2>Génération automatique de rapports</h2>
-                <p>Cet outil vous permet de générer des rapports détaillés sur les indicateurs de lettres de liaison pour améliorer la qualité de la prise en charge et la coordination des soins.</p>
+                <h2>Génération automatique de rapports Excel</h2>
+                <p>Cet outil vous permet de générer des rapports Excel détaillés sur les indicateurs de lettres de liaison pour améliorer la qualité de la prise en charge et la coordination des soins.</p>
             </div>
-
             <div class="loading" id="loading">
                 <div class="spinner"></div>
                 <p>Génération du rapport en cours, veuillez patienter...</p>
             </div>
-
             <div class="form-section">
                 <h2>Rapport par Période</h2>
                 <form id="dateForm">
@@ -367,10 +356,9 @@ async def read_root():
                         <input type="checkbox" id="send_email_date" name="send_email">
                         <label for="send_email_date">Envoyer le rapport par email</label>
                     </div>
-                    <button type="submit" class="btn">Générer le rapport</button>
+                    <button type="submit" class="btn">Générer le rapport Excel</button>
                 </form>
             </div>
-
             <div class="form-section">
                 <h2>Rapport par Numéros de Séjour</h2>
                 <form id="sejoursForm">
@@ -385,26 +373,20 @@ async def read_root():
                         <input type="checkbox" id="send_email_sejours" name="send_email">
                         <label for="send_email_sejours">Envoyer le rapport par email</label>
                     </div>
-                    <button type="submit" class="btn">Générer le rapport</button>
+                    <button type="submit" class="btn">Générer le rapport Excel</button>
                 </form>
             </div>
-
             <div class="form-section">
                 <h2>Test de Configuration Email</h2>
                 <p style="margin-bottom: 20px; color: #666; line-height: 1.6;">Envoyez un email de test pour vérifier que la configuration de messagerie fonctionne correctement.</p>
                 <button onclick="sendTestEmail()" class="btn btn-secondary">Envoyer un email de test</button>
             </div>
-
-
-
             <div class="result" id="result"></div>
         </div>
-
         <div class="footer">
             <p>Hôpital Foch - 40 rue Worth, 92150 Suresnes | <a href="tel:0146252000">01 46 25 20 00</a></p>
             <p style="margin-top: 5px;">© 2025 Fondation Foch - Tous droits réservés</p>
         </div>
-
         <script>
             // Définir les dates par défaut (début d'année jusqu'à aujourd'hui)
             window.onload = function() {
@@ -414,7 +396,6 @@ async def read_root():
                 document.getElementById('start_date').valueAsDate = startOfYear;
                 document.getElementById('end_date').valueAsDate = today;
             };
-
             // Formulaire par dates
             document.getElementById('dateForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
@@ -429,7 +410,6 @@ async def read_root():
                     send_email: sendEmail
                 });
             });
-
             // Formulaire par séjours
             document.getElementById('sejoursForm').addEventListener('submit', async (e) => {
                 e.preventDefault();
@@ -445,7 +425,6 @@ async def read_root():
                     send_email: sendEmail
                 });
             });
-
             // Fonction générique pour générer un rapport
             async function generateReport(endpoint, data) {
                 const loading = document.getElementById('loading');
@@ -476,24 +455,19 @@ async def read_root():
                                 <div style="margin-top: 20px; padding: 15px; background: #f8f9fb; border-radius: 4px;">
                                     <strong style="color: #00529B;">Résumé des indicateurs :</strong>
                                     <ul style="margin-top: 12px; margin-left: 20px; line-height: 1.8;">
-                                        <li><strong>Total séjours :</strong> ${responseData.statistics.total_sejours}</li>
-                                        <li><strong>Séjours validés :</strong> ${responseData.statistics.sejours_valides}</li>
-                                        <li><strong>Taux de validation :</strong> ${responseData.statistics.taux_validation}%</li>
-                                        <li><strong>Taux validation J0 :</strong> ${responseData.statistics.taux_validation_j0}%</li>
-                                        <li><strong>Délai moyen :</strong> ${responseData.statistics.delai_moyen_validation} jour(s)</li>
+                                        <li><strong>Total séjours :</strong> ${responseData.statistics.total_sejours_all || responseData.statistics.total_sejours}</li>
+                                        <li><strong>Séjours validés :</strong> ${responseData.statistics.nb_sejours_valides_all || responseData.statistics.sejours_valides}</li>
+                                        <li><strong>Taux de validation :</strong> ${(responseData.statistics.pct_sejours_validees_all || responseData.statistics.taux_validation).toFixed(1)}%</li>
+                                        <li><strong>Taux validation J0 :</strong> ${(responseData.statistics.taux_validation_j0_over_sejours_all || responseData.statistics.taux_validation_j0).toFixed(1)}%</li>
+                                        <li><strong>Délai moyen :</strong> ${(responseData.statistics.delai_moyen_validation_all || responseData.statistics.delai_moyen_validation).toFixed(1)} jour(s)</li>
                                     </ul>
                                 </div>
                             `;
                         }
                         
-                        if (responseData.pptx_path || responseData.excel_path) {
-                            html += '<div class="download-links"><strong>Télécharger les fichiers :</strong><br>';
-                            if (responseData.pptx_path) {
-                                html += `<a href="/download/${responseData.pptx_path.split('/').pop()}" download>📊 Présentation PowerPoint</a>`;
-                            }
-                            if (responseData.excel_path) {
-                                html += `<a href="/download/${responseData.excel_path.split('/').pop()}" download>📈 Données Excel</a>`;
-                            }
+                        if (responseData.excel_path) {
+                            html += '<div class="download-links"><strong>Télécharger le fichier :</strong><br>';
+                            html += `<a href="/download/${responseData.excel_path.split('/').pop()}" download>📊 Rapport Excel</a>`;
                             html += '</div>';
                         }
                         
@@ -509,7 +483,6 @@ async def read_root():
                     result.innerHTML = `<h3>✗ Erreur de connexion</h3><p>Impossible de communiquer avec le serveur : ${error.message}</p>`;
                 }
             }
-
             // Test email
             async function sendTestEmail() {
                 const loading = document.getElementById('loading');
@@ -590,9 +563,9 @@ def convert_to_serializable(obj):
     elif isinstance(obj, pd.Series):
         return obj.replace({np.nan: None}).to_dict()
     elif isinstance(obj, dict):
-        return {key: convert_to_serializable(value) for key, value in obj.items()}
+        return {key: value for key, value in obj.items()}
     elif isinstance(obj, list):
-        return [convert_to_serializable(item) for item in obj]
+        return [item for item in obj]
     elif pd.isna(obj):
         return None
     return obj
@@ -610,7 +583,6 @@ async def generate_report_by_date(request: ReportRequest):
         try:
             start = datetime.strptime(request.start_date, "%Y-%m-%d")
             end = datetime.strptime(request.end_date, "%Y-%m-%d")
-
             if start > end:
                 raise HTTPException(
                     status_code=400,
@@ -629,62 +601,46 @@ async def generate_report_by_date(request: ReportRequest):
             sejour_list=request.sejour_list,
         )
 
-        # Génération du PowerPoint
-        pptx_path = None
+        # Créer le dossier outputs s'il n'existe pas
+        os.makedirs("outputs", exist_ok=True)
+
+        # Créer le nom du fichier
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        start_formatted = start.strftime("%d-%m-%Y")
+        end_formatted = end.strftime("%d-%m-%Y")
+        excel_filename = (
+            f"LL_Rapport_{start_formatted}_au_{end_formatted}_{timestamp}.xlsx"
+        )
+        excel_path = os.path.join("outputs", excel_filename)
+
+        # Formater la période pour l'affichage
+        period = f"{start.strftime('%d/%m/%Y')} au {end.strftime('%d/%m/%Y')}"
+
+        # Génération du fichier Excel
         try:
-            # Créer le nom du fichier
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            start_formatted = start.strftime("%d-%m-%Y")
-            end_formatted = end.strftime("%d-%m-%Y")
-            output_filename = (
-                f"LL_Rapport_{start_formatted}_au_{end_formatted}_{timestamp}.pptx"
-            )
-            output_path = os.path.join("outputs", output_filename)
-
-            # Créer le dossier outputs s'il n'existe pas
-            os.makedirs("outputs", exist_ok=True)
-
-            # Formater la période pour l'affichage
-            period = f"{start.strftime('%d/%m/%Y')} au {end.strftime('%d/%m/%Y')}"
-
-            # Générer le PowerPoint avec les bons arguments
-            generate_powerpoint(
+            print("📊 Génération du fichier Excel...")
+            generate_excel(
                 stats_validation=stats_validation,
                 stats_diffusion=stats_diffusion,
-                output_path=output_path,
+                output_path=excel_path,
                 period=period,
-                logo_path=None,  # Ajoutez le chemin de votre logo si disponible
+            )
+            print(f"✅ Excel généré : {excel_path}")
+        except Exception as excel_error:
+            print(f"❌ Erreur génération Excel : {excel_error}")
+            traceback.print_exc()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Erreur lors de la génération du fichier Excel: {str(excel_error)}",
             )
 
-            pptx_path = output_path
-            print(f"✅ PowerPoint généré : {pptx_path}")
-
-        except Exception as pptx_error:
-            print(f"⚠️ Erreur génération PowerPoint : {pptx_error}")
-            traceback.print_exc()
-            # On continue même si le PowerPoint échoue
-
-        # Conversion des types numpy/pandas pour la sérialisation JSON
-        response_data = {
-            "status": "success",
-            "message": f"Rapport généré avec succès pour la période du {request.start_date} au {request.end_date}",
-            "period": {"start_date": request.start_date, "end_date": request.end_date},
-            "stats_validation": convert_to_serializable(stats_validation),
-            "stats_diffusion": convert_to_serializable(stats_diffusion),
-            "pptx_path": pptx_path,
-            "generated_at": datetime.now().isoformat(),
-        }
-
         print(f"✅ Réponse API préparée avec succès")
-        return response_data
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ ERREUR DÉTAILLÉE dans generate_report_by_date:")
-        print(traceback.format_exc())
-        raise HTTPException(
-            status_code=500, detail=f"Erreur lors de la génération du rapport: {str(e)}"
+        return FileResponse(
+            path=str(excel_path),
+            filename=excel_filename,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{excel_filename}"'},
         )
 
     except HTTPException:
@@ -694,67 +650,101 @@ async def generate_report_by_date(request: ReportRequest):
         # Log de l'erreur complète
         print(f"❌ ERREUR DÉTAILLÉE dans generate_report_by_date:")
         print(traceback.format_exc())
-
         # Retourner une erreur 500 avec le message
         raise HTTPException(
             status_code=500, detail=f"Erreur lors de la génération du rapport: {str(e)}"
         )
 
 
-@app.post("/api/report/by-sejours", response_model=ReportResponse)
+@app.post("/api/report/by-sejours")
 async def generate_report_by_sejours(
     request: ReportBySejoursRequest, background_tasks: BackgroundTasks
 ):
-    """Générer un rapport pour une liste de séjours"""
+    """
+    Générer un rapport pour une liste de séjours spécifiques
+    Args:
+        request: ReportBySejoursRequest contenant la liste des séjours et options
+        background_tasks: Pour l'envoi d'email en arrière-plan
+    Returns:
+        ReportResponse avec le chemin du fichier généré et statistiques
+    """
     try:
+        # Validation de la requête
         if not request.sejour_ids:
-            raise HTTPException(status_code=400, detail="Aucun numéro de séjour fourni")
+            raise HTTPException(
+                status_code=400,
+                detail="Aucun numéro de séjour fourni. Veuillez fournir au moins un numéro de séjour.",
+            )
 
-        # Générer les données
+        print(f"🛎️ Génération du rapport pour {len(request.sejour_ids)} séjours")
+
+        # Générer les données selon la méthodologie IQL
         data, stats_validation, stats_diffusion = generate_report_data(
-            sejour_list=request.sejour_ids
+            start_date=None,  # Pas de filtre par date
+            end_date=None,  # Pas de filtre par date
+            sejour_list=request.sejour_ids,
         )
+
+        # Vérifier que des données ont été trouvées
+        if data.empty:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Aucune donnée trouvée pour les {len(request.sejour_ids)} séjours demandés",
+            )
+
+        print(f"✅ {len(data)} lignes de données générées")
 
         # Créer le nom du fichier
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         nb_sejours = len(request.sejour_ids)
-
-        pptx_filename = f"LL_Rapport_{nb_sejours}_sejours_{timestamp}.pptx"
-        pptx_path = OUTPUT_DIR / pptx_filename
-
-        excel_filename = f"LL_Donnees_{nb_sejours}_sejours_{timestamp}.xlsx"
+        excel_filename = f"LL_Rapport_{nb_sejours}_sejours_{timestamp}.xlsx"
         excel_path = OUTPUT_DIR / excel_filename
 
-        # Générer le PowerPoint
-        generate_powerpoint(
-            stats_validation,
-            stats_diffusion,
-            str(pptx_path),
-            f"{nb_sejours} séjours sélectionnés",
-        )
+        # Créer le dossier outputs s'il n'existe pas
+        OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-        # Exporter les données en Excel
-        data.to_excel(str(excel_path), index=False)
+        # Générer le fichier Excel
+        print("📊 Génération du fichier Excel...")
+        try:
+            generate_excel(
+                stats_validation=stats_validation,
+                stats_diffusion=stats_diffusion,
+                output_path=str(excel_path),
+                period=f"{nb_sejours} séjours sélectionnés",
+            )
+            print(f"✅ Excel généré : {excel_path}")
+        except Exception as excel_error:
+            print(f"❌ Erreur génération Excel : {excel_error}")
+            traceback.print_exc()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Erreur lors de la génération du fichier Excel: {str(excel_error)}",
+            )
 
         # Envoyer par email si demandé
         if request.send_email:
+            print("📧 Ajout de l'envoi d'email en arrière-plan...")
             background_tasks.add_task(
                 send_monthly_report,
-                f"{nb_sejours} séjours",
-                stats_validation,
-                str(pptx_path),
-                str(excel_path),
+                period=f"{nb_sejours} séjours sélectionnés",
+                stats=stats_validation,
+                excel_path=str(excel_path),
             )
 
-        return ReportResponse(
-            success=True,
-            message=f"Rapport généré avec succès pour {nb_sejours} séjours",
-            pptx_path=str(pptx_path),
-            excel_path=str(excel_path),
-            statistics=stats_validation,
+        return FileResponse(
+            path=str(excel_path),
+            filename=excel_filename,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{excel_filename}"'},
         )
 
+    except HTTPException:
+        # Re-lever les HTTPException sans les wrapper
+        raise
     except Exception as e:
+        # Log de l'erreur complète
+        print(f"❌ ERREUR dans generate_report_by_sejours:")
+        traceback.print_exc()
         raise HTTPException(
             status_code=500, detail=f"Erreur lors de la génération du rapport: {str(e)}"
         )
@@ -765,7 +755,6 @@ async def test_email():
     """Envoyer un email de test"""
     try:
         success = await send_test_email()
-
         if success:
             return {
                 "success": True,
@@ -773,7 +762,6 @@ async def test_email():
             }
         else:
             return {"success": False, "message": "Échec de l'envoi de l'email de test"}
-
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Erreur lors de l'envoi de l'email: {str(e)}"

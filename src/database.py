@@ -129,9 +129,6 @@ def get_sejours_data(
 
         df = pd.DataFrame(data, columns=columns)
 
-        print(f"✅ DataFrame créé avec colonnes: {df.columns.tolist()}")  # DEBUG
-        print(f"📝 Aperçu des données:\n{df.head()}")  # DEBUG
-
         # Vérification que les colonnes existent avant de les manipuler
         if "pat_ipp" in df.columns:
             df["pat_ipp"] = df["pat_ipp"].apply(clean_ipp)
@@ -181,7 +178,8 @@ def get_documents_data(
             fsl.fos_libelle as doc_libelle,
             fic.fic_date_creation as doc_cre,
             fhs.fic_date_statut_validation as doc_val,
-            df2.fic_date_creation as doc_creamere
+            df2.fic_date_creation as doc_creamere,
+            dest.dest_diffusion_date as date_diffusion
         FROM NOYAU.patient.patient pat
             LEFT JOIN DOMINHO.dominho.FICHE fic ON pat.pat_id = fic.patient_id AND fic.fic_suppr = 0
             LEFT JOIN DOMINHO.dominho.FICHE_HISTORIQUE_STATUT fhs ON fhs.fiche_id = fic.fiche_id AND fhs.fic_statut_validation_id = 3
@@ -193,6 +191,8 @@ def get_documents_data(
                 AND for_courrier = 1
             LEFT JOIN DOMINHO.dominho.DOSSIER_SPECIALITE dos ON dos.dossier_specialite_id = fic.dossier_specialite_id
             LEFT JOIN dominho.dominho.FICHE df2 ON (df2.fiche_id = fic.fiche_mere_id AND df2.fic_suppr != 1)
+            LEFT JOIN BOITE_ENVOI.BOITE_ENVOI.DOCUMENT doc ON doc.document_id = fic.document_id
+            LEFT JOIN BOITE_ENVOI.BOITE_ENVOI.DESTINATAIRE dest on dest.doc_id = doc.doc_id 
         WHERE 1=1
             AND fsl.fos_libelle NOT LIKE '%Word Direct%'
         """
@@ -213,6 +213,8 @@ def get_documents_data(
         print(f"📋 Colonnes retournées: {df.columns.tolist()}")  # DEBUG
         print(f"📊 Nombre de lignes: {len(df)}")  # DEBUG
         print(f"📝 Aperçu des données:\n{df.head()}")  # DEBUG
+        print(f"📝 Aperçu des infos:\n{df.info()}")
+        print(f"📝 Aperçu des colonnes:\n{df[['doc_val', 'date_diffusion']]}")  # DEBUG
 
         # Conversion des dates
         if "doc_cre" in df.columns:
