@@ -2,13 +2,11 @@
 Module de connexion aux bases de données GAM et ESL
 """
 
-import jaydebeapi
 import pandas as pd
 from typing import Optional
-from datetime import datetime, timedelta
 from config import settings
 import re
-import pyodbc
+import pytds
 import oracledb
 
 
@@ -32,7 +30,7 @@ class DatabaseConnector:
                 self._conn_gam = oracledb.connect(
                     user=settings.GAM_USER, password=settings.GAM_PASSWORD, dsn=dsn
                 )
-                print("✅ Connexion GAM (Oracle) réussie")
+
             except Exception as e:
                 print(f"❌ Erreur connexion GAM: {e}")
                 raise
@@ -43,16 +41,13 @@ class DatabaseConnector:
         """Connexion à SQL Server (EASILY) avec lazy loading"""
         if self._conn_esl is None:
             try:
-                connection_string = (
-                    "DRIVER={SQL Server};"
-                    f"SERVER={settings.ESL_HOST};"
-                    f"PORT={settings.ESL_PORT};"
-                    f"DATABASE={settings.ESL_DATABASE};"
-                    "Trusted_Connection=no;"
-                    f"UID={settings.ESL_USER};"
-                    f"PWD={settings.ESL_PASSWORD}"
+                self._conn_esl = pytds.connect(
+                    server=settings.ESL_HOST,
+                    database=settings.ESL_DATABASE,
+                    user=settings.ESL_USER,
+                    password=settings.ESL_PASSWORD,
+                    autocommit=True,
                 )
-                self._conn_esl = pyodbc.connect(connection_string)
                 print("✅ Connexion EASILY (SQL Server) réussie")
             except Exception as e:
                 print(f"❌ Erreur connexion EASILY: {e}")
@@ -115,17 +110,14 @@ def get_sejours_data(
             # Par défaut: début de l'année en cours jusqu'à 3 mois avant aujourd'hui
             base_query += " AND ho_dfin BETWEEN TRUNC(SYSDATE, 'YYYY') AND LAST_DAY(ADD_MONTHS(SYSDATE, -3))"
 
-        print(f"🔍 Exécution requête GAM...")  # DEBUG
         cursor.execute(base_query)
 
         # Récupération des noms de colonnes
         columns = [
             desc[0].lower() for desc in cursor.description
         ]  # ✅ Conversion en minuscules
-        print(f"📋 Colonnes retournées: {columns}")  # DEBUG
 
         data = cursor.fetchall()
-        print(f"📊 Nombre de lignes: {len(data)}")  # DEBUG
 
         df = pd.DataFrame(data, columns=columns)
 
@@ -205,16 +197,8 @@ def get_documents_data(
             query += " AND fhs.fic_date_statut_validation >= DATEFROMPARTS(YEAR(GETDATE()), 1, 1)"
             query += " AND fhs.fic_date_statut_validation < DATEADD(DAY, 1, EOMONTH(DATEADD(MONTH, -2, GETDATE())))"
 
-        print(f"🔍 Exécution requête ESL...")  # DEBUG
-
         # ✅ SOLUTION : Utiliser pandas directement avec pyodbc
         df = pd.read_sql(query, conn)
-
-        print(f"📋 Colonnes retournées: {df.columns.tolist()}")  # DEBUG
-        print(f"📊 Nombre de lignes: {len(df)}")  # DEBUG
-        print(f"📝 Aperçu des données:\n{df.head()}")  # DEBUG
-        print(f"📝 Aperçu des infos:\n{df.info()}")
-        print(f"📝 Aperçu des colonnes:\n{df[['doc_val', 'date_diffusion']]}")  # DEBUG
 
         # Conversion des dates
         if "doc_cre" in df.columns:

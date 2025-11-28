@@ -9,6 +9,7 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils.dataframe import dataframe_to_rows
 from datetime import datetime
 from typing import Dict, List, Optional
+from io import BytesIO
 
 # --------------------------------------------------------------------
 #  CONSTANTES GLOBALES
@@ -414,10 +415,9 @@ def create_sheet_validation_detail(
 def generate_excel(
     stats_validation: Dict,
     stats_diffusion: Dict,
-    output_path: str,
     period: str,
-) -> None:
-    """Générer le fichier Excel avec toutes les feuilles"""
+) -> bytes:
+    """Générer le fichier Excel avec toutes les feuilles et le retourner en mémoire"""
 
     wb = Workbook()
 
@@ -431,10 +431,16 @@ def generate_excel(
     # create_sheet_methodologie(wb)
     # create_sheet_instructions(wb)
 
-    # Sauvegarder
-    wb.save(output_path)
-    print(f"✅ Excel généré : {output_path}")
-    print(f"   {len(wb.sheetnames)} feuilles | Formatage harmonisé")
+    # Sauvegarder dans un buffer en mémoire
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    print(
+        f"✅ Excel généré en mémoire ({len(wb.sheetnames)} feuilles | Formatage harmonisé)"
+    )
+
+    return buffer.getvalue()
 
 
 if __name__ == "__main__":
@@ -502,7 +508,6 @@ if __name__ == "__main__":
     generate_excel(
         test_stats_validation,
         test_stats_diffusion,
-        "indicateurs_lettres_liaison.xlsx",
         "01/01 au 31/07/2025 (TEST)",
     )
     print("\n✅ Test terminé !")

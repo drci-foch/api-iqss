@@ -27,15 +27,6 @@ class Settings(BaseSettings):
     ESL_USER: str
     ESL_PASSWORD: str
 
-    # Configuration Email
-    SMTP_HOST: str = "smtp.office365.com"
-    SMTP_PORT: int = 587
-    SMTP_USER: str
-    SMTP_PASSWORD: str
-    EMAIL_FROM: str
-    EMAIL_TO: str
-    EMAIL_CC: Optional[str] = None
-
     MATRICE_PATH: str = str(DATA_DIR / "iqss_ll_ufum3.csv")
 
     # Configuration Générale

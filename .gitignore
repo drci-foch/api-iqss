@@ -10,6 +10,7 @@ outputs/test/*
 *.csv
 *.xlsx
 *.pptx
+*.tar
 
 # Distribution / packaging
 .Python
