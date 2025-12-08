@@ -103,7 +103,7 @@ def get_sejours_data(
             AND ho_dfin IS NOT NULL
             AND (ho_dfin - ho_ddeb) >= 1
             AND uf_hjour IS NULL
-            AND mha.mh_ufcode NOT IN ('TEST99','392A','348U','537U','553A','294U','294E','350B','393A','393B','393C','549B','394B','675B')
+            AND mha.mh_ufcode NOT IN ('TEST99','392A','348U','537U','553A','294U','294E','350B','393A','393B','393C','549B','394B','675B','540A')
             AND (Si_DATEDEC IS NULL OR TRUNC(Si_DATEDEC) != TRUNC(ho_dfin))
         """
 
