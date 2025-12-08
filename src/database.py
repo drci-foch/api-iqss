@@ -197,8 +197,12 @@ def get_documents_data(
             dos.dos_libelle_court as doc_spe,
             fsl.fos_libelle as doc_libelle,
             fic.fic_date_creation as doc_cre,
+            ven.ven_numero as doc_venue,                    -- NOUVEAU
             fhs.fic_date_statut_validation as doc_val,
             df2.fic_date_creation as doc_creamere,
+            df2.fic_date_modification as doc_modmere,       -- NOUVEAU
+            df2.fiche_mere_id as doc_grandmereid,           -- NOUVEAU
+            df3.fic_date_creation as doc_grandmerecrea,     -- NOUVEAU
             dest.dest_diffusion_date as date_diffusion
         FROM NOYAU.patient.patient pat
             LEFT JOIN DOMINHO.dominho.FICHE fic ON pat.pat_id = fic.patient_id AND fic.fic_suppr = 0
@@ -211,12 +215,13 @@ def get_documents_data(
                 AND for_courrier = 1
             LEFT JOIN DOMINHO.dominho.DOSSIER_SPECIALITE dos ON dos.dossier_specialite_id = fic.dossier_specialite_id
             LEFT JOIN dominho.dominho.FICHE df2 ON (df2.fiche_id = fic.fiche_mere_id AND df2.fic_suppr != 1)
+            LEFT JOIN dominho.dominho.FICHE df3 ON (df2.fiche_mere_id = df3.fiche_id AND df3.fic_suppr != 1)  -- NOUVEAU
+            LEFT JOIN NOYAU.patient.VENUE ven ON ven.ven_id = fic.fic_venue  -- NOUVEAU
             LEFT JOIN BOITE_ENVOI.BOITE_ENVOI.DOCUMENT doc ON doc.document_id = fic.document_id
-            LEFT JOIN BOITE_ENVOI.BOITE_ENVOI.DESTINATAIRE dest on dest.doc_id = doc.doc_id 
+            LEFT JOIN BOITE_ENVOI.BOITE_ENVOI.DESTINATAIRE dest ON dest.doc_id = doc.doc_id 
         WHERE 1=1
             AND fsl.fos_libelle NOT LIKE '%Word Direct%'
         """
-
         # Ajout des conditions de date
         if start_date and end_date:
             query += f" AND fhs.fic_date_statut_validation BETWEEN '{start_date}' AND '{end_date}'"
@@ -233,7 +238,21 @@ def get_documents_data(
             df["doc_val"] = pd.to_datetime(df["doc_val"]).dt.date
         if "doc_creamere" in df.columns:
             df["doc_creamere"] = pd.to_datetime(df["doc_creamere"]).dt.date
+        if "doc_modmere" in df.columns:  # ✅ NOUVEAU
+            df["doc_modmere"] = pd.to_datetime(df["doc_modmere"]).dt.date
+        if "doc_grandmerecrea" in df.columns:  # ✅ NOUVEAU
+            df["doc_grandmerecrea"] = pd.to_datetime(df["doc_grandmerecrea"]).dt.date
+        if "date_diffusion" in df.columns:
+            df["date_diffusion"] = pd.to_datetime(df["date_diffusion"]).dt.date
 
+        # Si grand-mère existe, prendre sa date de création
+        if "doc_grandmerecrea" in df.columns and "doc_creamere" in df.columns:
+            df["doc_creamere"] = df.apply(
+                lambda row: row["doc_grandmerecrea"]
+                if pd.notna(row["doc_grandmerecrea"])
+                else row["doc_creamere"],
+                axis=1,
+            )
         # Nettoyage des IPP
         if "pat_ipp" in df.columns:
             df["pat_ipp"] = df["pat_ipp"].apply(clean_ipp)
