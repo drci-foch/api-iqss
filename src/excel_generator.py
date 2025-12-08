@@ -180,23 +180,103 @@ def create_sheet_resume(
         # Indicateur
         cell = ws.cell(row=row_idx, column=1, value=indicator)
         apply_cell_style(cell, bold=True, alignment_h="left")
-
         # Valeur
         cell = ws.cell(row=row_idx, column=2, value=value)
         apply_cell_style(cell, bg_color=color if color else None)
-
         # Objectif
         cell = ws.cell(row=row_idx, column=3, value=objective)
         apply_cell_style(cell)
-
         # Statut
         cell = ws.cell(row=row_idx, column=4, value=status)
         apply_cell_style(cell, font_size=14)
 
+    # Espace avant la note méthodologique
+    ws.row_dimensions[9].height = 10
+
+    # === NOTE MÉTHODOLOGIQUE ===
+
+    # Titre de la note
+    ws.merge_cells("A10:D10")
+    cell = ws["A10"]
+    cell.value = "NOTE MÉTHODOLOGIQUE"
+    apply_cell_style(
+        cell, font_size=12, bold=True, font_color=COLOR_WHITE, bg_color=FOCH_DARK_BLUE
+    )
+
+    # Sous-titre : Typologie des séjours
+    ws.merge_cells("A11:D11")
+    cell = ws["A11"]
+    cell.value = "Typologie des séjours"
+    apply_cell_style(cell, font_size=11, bold=True, bg_color=FOCH_LIGHT_BLUE)
+    ws.row_dimensions[11].height = 20
+
+    # Contenu méthodologique
+    methodology_texts = [
+        (
+            "• ",
+            "Le Décret n° 2016995 du 20 juillet 2016 relatif aux lettres de liaison (NOR : AFSH1612283D) précise que lors de la sortie de l'établissement de santé, une lettre de liaison (LL), rédigée par le médecin de l'établissement qui l'a pris en charge, est remise au patient et transmise le même jour, au médecin traitant.",
+        ),
+        (
+            "• ",
+            'Le code de santé publique demande une LL à la sortie de toute "admission" (en opposition aux consultations), HDJ comprises.',
+        ),
+        ("", ""),
+        (
+            "📋 ",
+            "Séjours pris en compte pour l'indicateur « séjours de 1 nuit et plus » :",
+        ),
+        ("", "Les séjours suivant sont exclus :"),
+        ("      - ", "Patients décédés (séjours non soumis aux LL)"),
+        ("      - ", "Chirurgie ambulatoire et Hôpitaux de jours"),
+        ("      - ", "Anesthésie, ophtalmologie, radiologie, ORL 392A"),
+        ("", ""),
+        ("📤 ", "Principe des indicateurs de diffusions (envois) :"),
+        (
+            "      - ",
+            "Seuls les séjours avec lettre de liaison validée par le médecin sont pris en compte",
+        ),
+        ("      - ", "En excluant :"),
+        (
+            "            • ",
+            "Les LL validées les samedis, dimanche et jours fériés (jours d'absence des secrétaires)",
+        ),
+        (
+            "            • ",
+            "Les LL avec plusieurs versions, dont la dernière version est validée à partir de J+1 après la sortie (date de diffusion des versions antérieures non sauvegardées)",
+        ),
+    ]
+
+    current_row = 12
+    for prefix, text in methodology_texts:
+        if text == "":  # Ligne vide
+            ws.row_dimensions[current_row].height = 5
+            current_row += 1
+            continue
+
+        ws.merge_cells(f"A{current_row}:D{current_row}")
+        cell = ws[f"A{current_row}"]
+        cell.value = prefix + text
+
+        # Style différent selon le contenu
+        if prefix in ["📋 ", "📤 "]:  # Sous-titres avec émoji
+            apply_cell_style(cell, bold=True, alignment_h="left")
+            ws.row_dimensions[current_row].height = 30
+        elif prefix == "• ":  # Points principaux
+            apply_cell_style(cell, alignment_h="left", font_size=10)
+            ws.row_dimensions[current_row].height = 40
+        else:  # Sous-points
+            apply_cell_style(cell, alignment_h="left", font_size=9)
+            ws.row_dimensions[current_row].height = 20
+
+        current_row += 1
+
+    # Espace final
+    ws.row_dimensions[current_row].height = 10
+
     # Largeurs de colonnes
     set_column_widths(ws, [35, 15, 15, 10])
 
-    # Ajuster les hauteurs
+    # Ajuster les hauteurs des premières lignes
     for row in range(1, 10):
         ws.row_dimensions[row].height = 25
 
@@ -407,6 +487,84 @@ def create_sheet_validation_detail(
     ws.row_dimensions[2].height = 35
 
 
+def create_sheet_dataframe_analysis(wb: Workbook, df: pd.DataFrame, period: str):
+    """Feuille : DataFrame d'analyse brut"""
+    ws = wb.create_sheet("Données d'analyse")
+
+    # En-tête
+    ws.merge_cells(f"A1:{chr(64 + len(df.columns))}1")
+    cell = ws["A1"]
+    cell.value = f"DONNÉES D'ANALYSE - {period}"
+    apply_cell_style(
+        cell, font_size=14, bold=True, font_color=COLOR_WHITE, bg_color=FOCH_BLUE
+    )
+
+    # Sous-titre
+    ws.merge_cells(f"A2:{chr(64 + len(df.columns))}2")
+    cell = ws["A2"]
+    cell.value = f"Nombre total de lignes : {len(df):,}".replace(",", " ")
+    apply_cell_style(cell, font_size=11, bold=True, bg_color=FOCH_LIGHT_BLUE)
+
+    # Espace
+    ws.row_dimensions[3].height = 5
+
+    # Convertir le DataFrame en lignes Excel
+    for r_idx, row in enumerate(
+        dataframe_to_rows(df, index=False, header=True), start=4
+    ):
+        for c_idx, value in enumerate(row, start=1):
+            cell = ws.cell(row=r_idx, column=c_idx, value=value)
+
+            # Style pour l'en-tête
+            if r_idx == 4:
+                apply_cell_style(
+                    cell,
+                    bold=True,
+                    font_color=COLOR_WHITE,
+                    bg_color=FOCH_DARK_BLUE,
+                    alignment_h="center",
+                )
+            else:
+                # Style alternant pour les données
+                bg_color = COLOR_WHITE if r_idx % 2 == 0 else "F8F9FA"
+                apply_cell_style(
+                    cell,
+                    bg_color=bg_color,
+                    alignment_h="left" if isinstance(value, str) else "center",
+                    font_size=10,
+                )
+
+    # Ajuster automatiquement la largeur des colonnes
+    # On itère sur les colonnes par leur index plutôt que par l'objet column
+    for col_idx in range(1, len(df.columns) + 1):
+        max_length = 0
+        column_letter = ws.cell(row=4, column=col_idx).column_letter
+
+        # Parcourir toutes les cellules de la colonne
+        for row_idx in range(4, ws.max_row + 1):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            try:
+                if cell.value:
+                    max_length = max(max_length, len(str(cell.value)))
+            except:
+                pass
+
+        adjusted_width = min(max(max_length + 2, 12), 50)  # Min 12, Max 50 caractères
+        ws.column_dimensions[column_letter].width = adjusted_width
+
+    # Hauteur des lignes d'en-tête
+    ws.row_dimensions[1].height = 25
+    ws.row_dimensions[2].height = 20
+    ws.row_dimensions[4].height = 30
+
+    # Figer les volets (en-têtes fixes)
+    ws.freeze_panes = "A5"
+
+    print(
+        f"   ↳ Feuille 'Données d'analyse' créée : {len(df)} lignes × {len(df.columns)} colonnes"
+    )
+
+
 # --------------------------------------------------------------------
 #  GENERATION DE L'EXCEL
 # --------------------------------------------------------------------
@@ -416,6 +574,7 @@ def generate_excel(
     stats_validation: Dict,
     stats_diffusion: Dict,
     period: str,
+    df_analysis: Optional[pd.DataFrame] = None,  # Nouveau paramètre
 ) -> bytes:
     """Générer le fichier Excel avec toutes les feuilles et le retourner en mémoire"""
 
@@ -428,8 +587,10 @@ def generate_excel(
     # Créer les feuilles
     create_sheet_resume(wb, stats_validation, stats_diffusion, period)
     create_sheet_validation_detail(wb, stats_validation, stats_diffusion, period)
-    # create_sheet_methodologie(wb)
-    # create_sheet_instructions(wb)
+
+    # Ajouter la feuille DataFrame si fournie
+    if df_analysis is not None and not df_analysis.empty:
+        create_sheet_dataframe_analysis(wb, df_analysis, period)
 
     # Sauvegarder dans un buffer en mémoire
     buffer = BytesIO()
