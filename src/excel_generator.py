@@ -6,6 +6,7 @@ Version 1.0 - Adapté du générateur PowerPoint
 import pandas as pd
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -492,7 +493,7 @@ def create_sheet_dataframe_analysis(wb: Workbook, df: pd.DataFrame, period: str)
     ws = wb.create_sheet("Données d'analyse")
 
     # En-tête
-    ws.merge_cells(f"A1:{chr(64 + len(df.columns))}1")
+    ws.merge_cells(f"A1:{get_column_letter(len(df.columns))}1")
     cell = ws["A1"]
     cell.value = f"DONNÉES D'ANALYSE - {period}"
     apply_cell_style(
@@ -500,7 +501,7 @@ def create_sheet_dataframe_analysis(wb: Workbook, df: pd.DataFrame, period: str)
     )
 
     # Sous-titre
-    ws.merge_cells(f"A2:{chr(64 + len(df.columns))}2")
+    ws.merge_cells(f"A2:{get_column_letter(len(df.columns))}2")
     cell = ws["A2"]
     cell.value = f"Nombre total de lignes : {len(df):,}".replace(",", " ")
     apply_cell_style(cell, font_size=11, bold=True, bg_color=FOCH_LIGHT_BLUE)
