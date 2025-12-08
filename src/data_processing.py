@@ -23,10 +23,10 @@ def normalize_text(text):
 
 
 def load_matrice_specialite(
-    matrice_path: str = "data/db/iqss_ll_ufum3.csv",
+    matrice_path: str = "data/db/iql_matspe_7.xlsx",
 ) -> pd.DataFrame:
     """Charge et prépare la matrice de spécialité"""
-    matrice = pd.read_csv(matrice_path, sep=";", dtype={"sej_uf": str})
+    matrice = pd.read_excel(matrice_path, dtype={"sej_uf": str})
     matrice["doc_key_norm"] = matrice["doc_key"].apply(normalize_text)
     # Supprimer les doublons (garder la première occurrence)
     matrice = matrice.drop_duplicates(subset=["sej_uf", "doc_key_norm"], keep="first")
@@ -64,7 +64,7 @@ def create_doc_key(libelle: str) -> str:
 
 
 def classify_sejours_iql(
-    df: pd.DataFrame, matrice_path: str = "data/db/iqss_ll_ufum3.csv"
+    df: pd.DataFrame, matrice_path: str = "data/db/iql_matspe_7.xlsx"
 ) -> pd.DataFrame:
     """
     Classifie les séjours selon la méthodologie IQL
