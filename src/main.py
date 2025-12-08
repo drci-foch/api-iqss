@@ -96,9 +96,10 @@ async def generate_report_by_date(request: ReportRequest):
         try:
             print("📊 Génération du fichier Excel en mémoire...")
             excel_bytes = generate_excel(
-                stats_validation=stats_validation,
-                stats_diffusion=stats_diffusion,
-                period=period,
+                stats_validation,
+                stats_diffusion,
+                period,
+                df_analysis=data,  # Ajouter le DataFrame
             )
             print("✅ Excel généré en mémoire")
         except Exception as excel_error:
@@ -166,6 +167,7 @@ async def generate_report_by_sejours(request: ReportBySejoursRequest):
                 stats_validation=stats_validation,
                 stats_diffusion=stats_diffusion,
                 period=f"{nb_sejours} séjours sélectionnés",
+                df_analysis=data,
             )
             print("✅ Excel généré en mémoire")
         except Exception as excel_error:

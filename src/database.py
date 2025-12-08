@@ -3,7 +3,7 @@ Module de connexion aux bases de données GAM et ESL
 """
 
 import pandas as pd
-from typing import Optional
+from typing import Optional, List
 from config import settings
 import re
 import pytds
@@ -71,14 +71,21 @@ def get_sejours_data(
 ) -> pd.DataFrame:
     """
     Récupérer les données des séjours depuis GAM
+
+    Args:
+        start_date: Date de début (format YYYY-MM-DD)
+        end_date: Date de fin (format YYYY-MM-DD)
+        sejour_list: Liste optionnelle de numéros de séjours
+
+    Returns:
+        DataFrame avec les données des séjours
     """
     db = DatabaseConnector()
-
     try:
         conn = db.connect_gam  # Sans parenthèses
         cursor = conn.cursor()
 
-        # Construction de la requête SQL
+        # Construction de la requête SQL de base
         base_query = """
         SELECT 
             HO_MANUMDOS as pat_ipp, 
@@ -100,15 +107,36 @@ def get_sejours_data(
             AND (Si_DATEDEC IS NULL OR TRUNC(Si_DATEDEC) != TRUNC(ho_dfin))
         """
 
-        # Ajout des conditions selon les paramètres
+        # Initialiser les filtres
+        filters = []
+
+        # Filtre par dates
+        if start_date and end_date:
+            filters.append(
+                f"ho_dfin BETWEEN TO_DATE('{start_date}', 'YYYY-MM-DD') AND TO_DATE('{end_date}', 'YYYY-MM-DD')"
+            )
+        elif not sejour_list:
+            # Par défaut uniquement si aucune date ET aucune liste de séjours
+            filters.append(
+                "ho_dfin BETWEEN TRUNC(SYSDATE, 'YYYY') AND LAST_DAY(ADD_MONTHS(SYSDATE, -3))"
+            )
+
+        # Filtre par liste de séjours (peut se combiner avec les dates)
         if sejour_list:
-            sejour_str = "','".join(str(s) for s in sejour_list)
-            base_query += f" AND ho_num IN ('{sejour_str}')"
-        elif start_date and end_date:
-            base_query += f" AND ho_dfin BETWEEN TO_DATE('{start_date}', 'YYYY-MM-DD') AND TO_DATE('{end_date}', 'YYYY-MM-DD')"
-        else:
-            # Par défaut: début de l'année en cours jusqu'à 3 mois avant aujourd'hui
-            base_query += " AND ho_dfin BETWEEN TRUNC(SYSDATE, 'YYYY') AND LAST_DAY(ADD_MONTHS(SYSDATE, -3))"
+            # Nettoyer la liste des séjours
+            sejour_list_clean = [str(s).strip() for s in sejour_list if str(s).strip()]
+
+            if sejour_list_clean:
+                sejour_str = "','".join(sejour_list_clean)
+                filters.append(f"ho_num IN ('{sejour_str}')")
+
+        # Appliquer les filtres
+        if filters:
+            base_query += " AND " + " AND ".join(filters)
+
+        print("📊 Requête SQL séjours:")
+        print(base_query)
+        print()
 
         cursor.execute(base_query)
 
@@ -116,10 +144,10 @@ def get_sejours_data(
         columns = [
             desc[0].lower() for desc in cursor.description
         ]  # ✅ Conversion en minuscules
-
         data = cursor.fetchall()
-
         df = pd.DataFrame(data, columns=columns)
+
+        print(f"✅ Séjours récupérés : {len(df)} lignes")
 
         # Vérification que les colonnes existent avant de les manipuler
         if "pat_ipp" in df.columns:
@@ -193,9 +221,7 @@ def get_documents_data(
         if start_date and end_date:
             query += f" AND fhs.fic_date_statut_validation BETWEEN '{start_date}' AND '{end_date}'"
         else:
-            # Par défaut: début de l'année en cours jusqu'à 2 mois avant aujourd'hui
-            query += " AND fhs.fic_date_statut_validation >= DATEFROMPARTS(YEAR(GETDATE()), 1, 1)"
-            query += " AND fhs.fic_date_statut_validation < DATEADD(DAY, 1, EOMONTH(DATEADD(MONTH, -2, GETDATE())))"
+            pass
 
         # ✅ SOLUTION : Utiliser pandas directement avec pyodbc
         df = pd.read_sql(query, conn)

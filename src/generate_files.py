@@ -60,8 +60,8 @@ def export_requete_to_excel(
 
 
 def generate_report_data(
-    start_date: str,
-    end_date: str,
+    start_date: Optional[List[str]] = None,
+    end_date: Optional[List[str]] = None,
     sejour_list: Optional[List[str]] = None,
     matrice_path: Optional[str] = None,  # Permettre de passer un chemin personnalisé
 ) -> Tuple[pd.DataFrame, Dict, Dict]:
