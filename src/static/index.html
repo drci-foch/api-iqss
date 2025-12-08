@@ -59,7 +59,8 @@
       color: white;
       padding: 28px 32px;
       position: relative;
-      overflow: hidden;
+      overflow-y: auto;
+      max-height: 90vh;
     }
 
     .brand-panel::before {
@@ -144,9 +145,120 @@
       background: #38f3ff;
     }
 
+    /* Styles pour la note méthodologique dans le panneau bleu */
+    .methodology-section-brand {
+      position: relative;
+      margin-top: 28px;
+      padding-top: 24px;
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .methodology-header-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .methodology-icon-brand {
+      font-size: 20px;
+    }
+
+    .methodology-header-brand h3 {
+      font-size: 15px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      opacity: 0.95;
+    }
+
+    .methodology-subsection {
+      position: relative;
+      margin-bottom: 18px;
+    }
+
+    .methodology-subsection-title {
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      opacity: 0.95;
+      background: rgba(255, 255, 255, 0.1);
+      padding: 6px 10px;
+      border-radius: 8px;
+      border-left: 3px solid rgba(255, 255, 255, 0.4);
+    }
+
+    .methodology-content-brand {
+      font-size: 11px;
+      line-height: 1.7;
+      opacity: 0.88;
+    }
+
+    .methodology-list-brand {
+      margin: 6px 0;
+      padding-left: 0;
+      list-style: none;
+    }
+
+    .methodology-list-brand li {
+      margin: 6px 0;
+      padding-left: 18px;
+      position: relative;
+    }
+
+    .methodology-list-brand li::before {
+      content: "•";
+      position: absolute;
+      left: 4px;
+      color: #38f3ff;
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    .methodology-sublist-brand {
+      margin: 6px 0 6px 12px;
+      padding-left: 0;
+      list-style: none;
+    }
+
+    .methodology-sublist-brand li {
+      margin: 4px 0;
+      padding-left: 16px;
+      font-size: 10px;
+      opacity: 0.8;
+    }
+
+    .methodology-sublist-brand li::before {
+      content: "−";
+      left: 4px;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .methodology-highlight-brand {
+      position: relative;
+      background: rgba(255, 255, 255, 0.12);
+      padding: 10px 12px;
+      border-radius: 8px;
+      border-left: 3px solid #fbbf24;
+      margin: 12px 0;
+      font-size: 10px;
+      line-height: 1.6;
+    }
+
+    .methodology-highlight-brand strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 11px;
+    }
+
     .brand-footer {
       position: relative;
-      margin-top: 14px;
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(255, 255, 255, 0.2);
       font-size: 11px;
       opacity: 0.75;
     }
@@ -415,7 +527,7 @@
 
       <p class="brand-subtitle">
         Interface de génération de rapports Excel sur les lettres de liaison,
-        à partir d’une période donnée ou d’une sélection de séjours.
+        à partir d'une période donnée ou d'une sélection de séjours.
       </p>
 
       <div class="brand-badges">
@@ -423,11 +535,69 @@
           <span class="brand-badge-dot"></span>
           <span>Qualité & Continuité des soins</span>
         </div>
-
       </div>
 
+      <!-- Note Méthodologique dans le panneau bleu -->
+      <section class="methodology-section-brand">
+        <div class="methodology-header-brand">
+          <span class="methodology-icon-brand">📋</span>
+          <h3>Note Méthodologique</h3>
+        </div>
+
+        <div class="methodology-subsection">
+          <div class="methodology-subsection-title">
+            <span>📖</span>
+            <span>Typologie des séjours</span>
+          </div>
+          <div class="methodology-content-brand">
+            <ul class="methodology-list-brand">
+              <li>Le Décret n° 2016995 du 20 juillet 2016 relatif aux lettres de liaison (NOR : AFSH1612283D) précise que lors de la sortie de l'établissement de santé, une lettre de liaison (LL), rédigée par le médecin de l'établissement qui l'a pris en charge, est remise au patient et transmise le même jour, au médecin traitant.</li>
+              <li>Le code de santé publique demande une LL à la sortie de toute "admission" (en opposition aux consultations), HDJ comprises.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="methodology-subsection">
+          <div class="methodology-subsection-title">
+            <span>🏥</span>
+            <span>Séjours pris en compte (« 1 nuit et plus »)</span>
+          </div>
+          <div class="methodology-content-brand">
+            <p style="margin-bottom: 6px; opacity: 0.9;">Les séjours suivants sont exclus :</p>
+            <ul class="methodology-list-brand">
+              <li>Patients décédés (séjours non soumis aux LL)</li>
+              <li>Chirurgie ambulatoire et Hôpitaux de jours</li>
+              <li>Anesthésie, ophtalmologie, radiologie, ORL 392A</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="methodology-subsection">
+          <div class="methodology-subsection-title">
+            <span>📤</span>
+            <span>Indicateurs de diffusion (envois)</span>
+          </div>
+          <div class="methodology-content-brand">
+            <ul class="methodology-list-brand">
+              <li>Seuls les séjours avec lettre de liaison validée par le médecin sont pris en compte</li>
+              <li>En excluant :
+                <ul class="methodology-sublist-brand">
+                  <li>Les LL validées les samedis, dimanche et jours fériés (jours d'absence des secrétaires)</li>
+                  <li>Les LL avec plusieurs versions, dont la dernière version est validée à partir de J+1 après la sortie (date de diffusion des versions antérieures non sauvegardées)</li>
+                </ul>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="methodology-highlight-brand">
+          <strong>⚠️ Important</strong>
+          La requête calcule le délai entre la date de validation du document et la date de sortie du patient de l'établissement. Pour les séjours multi-spécialités, seul le document de la dernière unité de soins où a été hospitalisé le patient est pris en compte.
+        </div>
+      </section>
+
       <p class="brand-footer">
-        Pour toute anomalie de données ou besoin d’évolution, merci de contacter
+        Pour toute anomalie de données ou besoin d'évolution, merci de contacter
         l'Unité Data de la DRCI. Cette interface ne contient aucune donnée
         patient nominative : seuls des indicateurs agrégés sont exportés.
       </p>
@@ -515,7 +685,7 @@
           <h2 class="card-title">Rapport par séjours</h2>
         </div>
         <p class="card-description">
-          Collez une liste de numéros de séjour. L’API génèrera un rapport
+          Collez une liste de numéros de séjour. L'API génèrera un rapport
           dédié à ces séjours uniquement.
         </p>
 
