@@ -1,6 +1,6 @@
 """
 Générateur Excel pour les indicateurs de Lettres de Liaison
-Version 1.0 - Adapté du générateur PowerPoint
+Version 1.1 - Avec feuille de graphiques
 """
 
 import pandas as pd
@@ -8,6 +8,9 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl.chart import PieChart, BarChart, LineChart, Reference
+from openpyxl.chart.series import DataPoint
+from openpyxl.chart.label import DataLabelList
 from datetime import datetime
 from typing import Dict, List, Optional
 from io import BytesIO
@@ -371,25 +374,25 @@ def create_sheet_validation_detail(
         apply_cell_style(cell, bg_color=bg_color)
 
         # % diff.
-        pct_diff = spe_diff["pct_ll_diffusees_over_validees"]
+        pct_diff = spe_diff.get("pct_ll_diffusees_over_validees", 0)
         cell = ws.cell(row=row_idx, column=8, value=f"{pct_diff:.1f}%")
         color_diff = get_color_by_threshold(pct_diff, 90, 75, 60)
         apply_cell_style(cell, bg_color=color_diff)
 
         # % des séjours
-        pct_diff_sejours = spe_diff["pct_ll_diffusees_over_sejours"]
+        pct_diff_sejours = spe_diff.get("pct_ll_diffusees_over_sejours", 0)
         cell = ws.cell(row=row_idx, column=9, value=f"{pct_diff_sejours:.1f}%")
         color_diff_global = get_color_by_threshold(pct_diff_sejours, 90, 75, 60)
         apply_cell_style(cell, bold=True, bg_color=color_diff_global)
 
         # Taux de diffusion à J0 de la validation
-        pct_diff_validation = spe_diff["taux_diffusion_J0_validation"]
+        pct_diff_validation = spe_diff.get("taux_diffusion_J0_validation", 0)
         cell = ws.cell(row=row_idx, column=10, value=f"{pct_diff_validation:.1f}%")
         color_diff_global = get_color_by_threshold(pct_diff_validation, 90, 75, 60)
         apply_cell_style(cell, bold=True, bg_color=color_diff_global)
 
         # Délai diff. / validation
-        delai_diff_validation = spe_diff["delai_diffusion_validation"]
+        delai_diff_validation = spe_diff.get("delai_diffusion_validation", 0)
         if delai_diff_validation is None or (
             isinstance(delai_diff_validation, float) and pd.isna(delai_diff_validation)
         ):
@@ -536,12 +539,10 @@ def create_sheet_dataframe_analysis(wb: Workbook, df: pd.DataFrame, period: str)
                 )
 
     # Ajuster automatiquement la largeur des colonnes
-    # On itère sur les colonnes par leur index plutôt que par l'objet column
     for col_idx in range(1, len(df.columns) + 1):
         max_length = 0
         column_letter = ws.cell(row=4, column=col_idx).column_letter
 
-        # Parcourir toutes les cellules de la colonne
         for row_idx in range(4, ws.max_row + 1):
             cell = ws.cell(row=row_idx, column=col_idx)
             try:
@@ -550,7 +551,7 @@ def create_sheet_dataframe_analysis(wb: Workbook, df: pd.DataFrame, period: str)
             except:
                 pass
 
-        adjusted_width = min(max(max_length + 2, 12), 50)  # Min 12, Max 50 caractères
+        adjusted_width = min(max(max_length + 2, 12), 50)
         ws.column_dimensions[column_letter].width = adjusted_width
 
     # Hauteur des lignes d'en-tête
@@ -558,12 +559,260 @@ def create_sheet_dataframe_analysis(wb: Workbook, df: pd.DataFrame, period: str)
     ws.row_dimensions[2].height = 20
     ws.row_dimensions[4].height = 30
 
-    # Figer les volets (en-têtes fixes)
+    # Figer les volets
     ws.freeze_panes = "A5"
 
     print(
         f"   ↳ Feuille 'Données d'analyse' créée : {len(df)} lignes × {len(df.columns)} colonnes"
     )
+
+
+# --------------------------------------------------------------------
+#  NOUVELLE FEUILLE : GRAPHIQUES
+# --------------------------------------------------------------------
+
+
+def create_sheet_graphiques(
+    wb: Workbook,
+    stats_validation: Dict,
+    stats_diffusion: Dict,
+    df_analysis: Optional[pd.DataFrame],
+    period: str,
+):
+    """
+    Feuille : Graphiques visuels
+
+    Crée 3 graphiques :
+    1. Camembert : Répartition J0 / ≥J1 / Sans LL
+    2. Barres horizontales : % LL validées J0 par spécialité
+    3. Barres : Nb séjours par spécialité
+    """
+    ws = wb.create_sheet("Graphiques")
+
+    # ================================================================
+    # SECTION 1 : DONNÉES POUR LE CAMEMBERT (Répartition J0/J1+/SansLL)
+    # ================================================================
+
+    # Calculer la répartition depuis les stats ou le DataFrame
+    if df_analysis is not None and "sej_classe" in df_analysis.columns:
+        # Calcul depuis le DataFrame d'analyse
+        class_counts = df_analysis["sej_classe"].value_counts()
+        nb_j0 = int(class_counts.get("0j", 0))
+        nb_j1_plus = int(class_counts.get("1j+", 0))
+        nb_sans_ll = int(class_counts.get("sansLL", 0))
+    else:
+        # Estimation depuis les stats
+        total = stats_validation.get("total_sejours_all", 0)
+        taux_j0 = stats_validation.get("taux_validation_j0_over_sejours_all", 0)
+        taux_val = stats_validation.get("pct_sejours_validees_all", 0)
+
+        nb_j0 = int(total * taux_j0 / 100)
+        nb_valides = int(total * taux_val / 100)
+        nb_j1_plus = nb_valides - nb_j0
+        nb_sans_ll = total - nb_valides
+
+    total_sejours = nb_j0 + nb_j1_plus + nb_sans_ll
+
+    # Calculer les pourcentages
+    pct_j0 = (nb_j0 / total_sejours * 100) if total_sejours > 0 else 0
+    pct_j1_plus = (nb_j1_plus / total_sejours * 100) if total_sejours > 0 else 0
+    pct_sans_ll = (nb_sans_ll / total_sejours * 100) if total_sejours > 0 else 0
+
+    # En-tête de la feuille
+    ws.merge_cells("A1:H1")
+    cell = ws["A1"]
+    cell.value = f"GRAPHIQUES - INDICATEURS LETTRES DE LIAISON - {period}"
+    apply_cell_style(
+        cell, font_size=16, bold=True, font_color=COLOR_WHITE, bg_color=FOCH_BLUE
+    )
+    ws.row_dimensions[1].height = 35
+
+    # ================================================================
+    # DONNÉES POUR CAMEMBERT (colonnes A-C, lignes 3-6)
+    # ================================================================
+    ws["A3"] = "Répartition des séjours"
+    apply_cell_style(ws["A3"], bold=True, font_size=12, bg_color=FOCH_LIGHT_BLUE)
+    ws.merge_cells("A3:C3")
+
+    # En-têtes
+    ws["A4"] = "Catégorie"
+    ws["B4"] = "Nombre"
+    ws["C4"] = "Pourcentage"
+    for col in ["A4", "B4", "C4"]:
+        apply_cell_style(
+            ws[col], bold=True, bg_color=FOCH_DARK_BLUE, font_color=COLOR_WHITE
+        )
+
+    # Données
+    pie_data = [
+        ("J0", nb_j0, pct_j0),
+        ("≥ J1", nb_j1_plus, pct_j1_plus),
+        ("Sans LL", nb_sans_ll, pct_sans_ll),
+    ]
+
+    for i, (cat, nb, pct) in enumerate(pie_data, start=5):
+        ws.cell(row=i, column=1, value=cat)
+        ws.cell(row=i, column=2, value=nb)
+        ws.cell(row=i, column=3, value=round(pct, 1))
+        apply_cell_style(ws.cell(row=i, column=1), alignment_h="left")
+        apply_cell_style(ws.cell(row=i, column=2))
+        apply_cell_style(ws.cell(row=i, column=3))
+
+    # Créer le camembert
+    pie_chart = PieChart()
+    pie_chart.title = "Répartition des séjours"
+
+    # Références aux données
+    labels = Reference(ws, min_col=1, min_row=5, max_row=7)
+    data = Reference(ws, min_col=2, min_row=4, max_row=7)
+
+    pie_chart.add_data(data, titles_from_data=True)
+    pie_chart.set_categories(labels)
+
+    # Style du camembert
+    pie_chart.width = 12
+    pie_chart.height = 8
+
+    # Couleurs personnalisées (vert olive, orange clair, gris)
+    colors = ["92D050", "FFC000", "A6A6A6"]
+    for i, color in enumerate(colors):
+        pt = DataPoint(idx=i)
+        pt.graphicalProperties.solidFill = color
+        pie_chart.series[0].data_points.append(pt)
+
+    # Étiquettes de données
+    pie_chart.dataLabels = DataLabelList()
+    pie_chart.dataLabels.showVal = True
+    pie_chart.dataLabels.showPercent = True
+    pie_chart.dataLabels.showCatName = True
+
+    ws.add_chart(pie_chart, "E3")
+
+    # ================================================================
+    # DONNÉES POUR BARRES PAR SPÉCIALITÉ (colonnes A-D, lignes 12+)
+    # ================================================================
+
+    # Titre
+    ws["A12"] = "Taux de validation J0 par spécialité"
+    apply_cell_style(ws["A12"], bold=True, font_size=12, bg_color=FOCH_LIGHT_BLUE)
+    ws.merge_cells("A12:D12")
+
+    # En-têtes
+    ws["A13"] = "Spécialité"
+    ws["B13"] = "Nb séjours"
+    ws["C13"] = "% validées"
+    ws["D13"] = "% J0"
+    for col in ["A13", "B13", "C13", "D13"]:
+        apply_cell_style(
+            ws[col], bold=True, bg_color=FOCH_DARK_BLUE, font_color=COLOR_WHITE
+        )
+
+    # Données par spécialité (triées par taux J0 décroissant pour le graphique)
+    specialites = stats_validation.get("par_specialite_all", [])
+    specialites_sorted = sorted(
+        specialites,
+        key=lambda x: x.get("taux_validation_j0_over_sejours", 0),
+        reverse=True,
+    )
+
+    # Limiter à 15 spécialités pour la lisibilité
+    specialites_display = specialites_sorted[:15]
+
+    row_start = 14
+    for i, spe in enumerate(specialites_display):
+        row = row_start + i
+        ws.cell(row=row, column=1, value=spe.get("specialite", ""))
+        ws.cell(row=row, column=2, value=spe.get("total_sejours", 0))
+        ws.cell(row=row, column=3, value=round(spe.get("pct_sejours_validees", 0), 1))
+        ws.cell(
+            row=row,
+            column=4,
+            value=round(spe.get("taux_validation_j0_over_sejours", 0), 1),
+        )
+
+        apply_cell_style(ws.cell(row=row, column=1), alignment_h="left")
+        apply_cell_style(ws.cell(row=row, column=2))
+        apply_cell_style(ws.cell(row=row, column=3))
+        apply_cell_style(ws.cell(row=row, column=4))
+
+    row_end = row_start + len(specialites_display) - 1
+
+    # ================================================================
+    # GRAPHIQUE BARRES : % Validation J0 par spécialité
+    # ================================================================
+
+    bar_chart = BarChart()
+    bar_chart.type = "bar"  # Barres horizontales
+    bar_chart.style = 10
+    bar_chart.title = "% LL validées le jour de la sortie (J0) par service"
+    bar_chart.y_axis.title = "Service"
+    bar_chart.x_axis.title = "% LL validées J0"
+
+    # Références aux données (colonne D = % J0)
+    data_ref = Reference(ws, min_col=4, min_row=13, max_row=row_end)
+    cats_ref = Reference(ws, min_col=1, min_row=14, max_row=row_end)
+
+    bar_chart.add_data(data_ref, titles_from_data=True)
+    bar_chart.set_categories(cats_ref)
+    bar_chart.shape = 4
+
+    bar_chart.width = 18
+    bar_chart.height = 12
+
+    # Couleur verte pour les barres
+    bar_chart.series[0].graphicalProperties.solidFill = "92D050"
+
+    ws.add_chart(bar_chart, "F12")
+
+    # ================================================================
+    # GRAPHIQUE BARRES VERTICALES : Nb séjours par spécialité
+    # ================================================================
+
+    # Position après le premier graphique de barres
+    bar_row = row_end + 5
+
+    ws.cell(row=bar_row, column=1, value="Volume de séjours par spécialité")
+    apply_cell_style(
+        ws.cell(row=bar_row, column=1),
+        bold=True,
+        font_size=12,
+        bg_color=FOCH_LIGHT_BLUE,
+    )
+    ws.merge_cells(f"A{bar_row}:D{bar_row}")
+
+    bar_chart2 = BarChart()
+    bar_chart2.type = "col"  # Barres verticales
+    bar_chart2.style = 10
+    bar_chart2.title = "Nombre de séjours par spécialité"
+    bar_chart2.x_axis.title = "Spécialité"
+    bar_chart2.y_axis.title = "Nombre de séjours"
+
+    # Références aux données (colonne B = Nb séjours)
+    data_ref2 = Reference(ws, min_col=2, min_row=13, max_row=row_end)
+    cats_ref2 = Reference(ws, min_col=1, min_row=14, max_row=row_end)
+
+    bar_chart2.add_data(data_ref2, titles_from_data=True)
+    bar_chart2.set_categories(cats_ref2)
+
+    bar_chart2.width = 18
+    bar_chart2.height = 10
+
+    # Couleur bleue Foch pour les barres
+    bar_chart2.series[0].graphicalProperties.solidFill = FOCH_BLUE
+
+    ws.add_chart(bar_chart2, f"F{bar_row}")
+
+    # ================================================================
+    # AJUSTEMENTS FINAUX
+    # ================================================================
+
+    # Largeurs de colonnes
+    ws.column_dimensions["A"].width = 25
+    ws.column_dimensions["B"].width = 12
+    ws.column_dimensions["C"].width = 12
+    ws.column_dimensions["D"].width = 12
+
+    print(f"   ↳ Feuille 'Graphiques' créée avec 3 graphiques")
 
 
 # --------------------------------------------------------------------
@@ -575,7 +824,7 @@ def generate_excel(
     stats_validation: Dict,
     stats_diffusion: Dict,
     period: str,
-    df_analysis: Optional[pd.DataFrame] = None,  # Nouveau paramètre
+    df_analysis: Optional[pd.DataFrame] = None,
 ) -> bytes:
     """Générer le fichier Excel avec toutes les feuilles et le retourner en mémoire"""
 
@@ -593,83 +842,162 @@ def generate_excel(
     if df_analysis is not None and not df_analysis.empty:
         create_sheet_dataframe_analysis(wb, df_analysis, period)
 
+    # NOUVELLE FEUILLE : Graphiques
+    create_sheet_graphiques(wb, stats_validation, stats_diffusion, df_analysis, period)
+
     # Sauvegarder dans un buffer en mémoire
     buffer = BytesIO()
     wb.save(buffer)
     buffer.seek(0)
 
     print(
-        f"✅ Excel généré en mémoire ({len(wb.sheetnames)} feuilles | Formatage harmonisé)"
+        f"✅ Excel généré en mémoire ({len(wb.sheetnames)} feuilles | Formatage harmonisé | Graphiques inclus)"
     )
 
     return buffer.getvalue()
 
 
 if __name__ == "__main__":
-    # Exemple de test
+    # Exemple de test avec données fictives
     test_stats_validation = {
-        "total_sejours_all": 1769,
-        "nb_sejours_valides_all": 1603,
-        "pct_sejours_validees_all": 90.6,
-        "taux_validation_j0_over_sejours_all": 70.7,
+        "total_sejours_all": 1599,
+        "nb_sejours_valides_all": 1508,
+        "pct_sejours_validees_all": 94.3,
+        "taux_validation_j0_over_sejours_all": 81.4,
         "delai_moyen_validation_all": 0.8,
         "par_specialite_all": [
             {
-                "specialite": "VASCULAIRE",
-                "total_sejours": 128,
-                "nb_sejours_valides": 117,
-                "pct_sejours_validees": 91.4,
-                "taux_validation_j0_over_sejours": 72.6,
-                "delai_moyen_validation": 0.8,
+                "specialite": "GERIATRIE",
+                "total_sejours": 150,
+                "nb_sejours_valides": 150,
+                "pct_sejours_validees": 100.0,
+                "taux_validation_j0_over_sejours": 100.0,
+                "delai_moyen_validation": 0.0,
             },
             {
-                "specialite": "NEUROCHIRURGIE",
-                "total_sejours": 145,
-                "nb_sejours_valides": 140,
-                "pct_sejours_validees": 96.5,
-                "taux_validation_j0_over_sejours": 85.0,
-                "delai_moyen_validation": 0.5,
+                "specialite": "THORACIQUE",
+                "total_sejours": 120,
+                "nb_sejours_valides": 120,
+                "pct_sejours_validees": 100.0,
+                "taux_validation_j0_over_sejours": 100.0,
+                "delai_moyen_validation": 0.0,
             },
             {
                 "specialite": "CARDIOLOGIE",
-                "total_sejours": 197,
-                "nb_sejours_valides": 180,
-                "pct_sejours_validees": 91.4,
-                "taux_validation_j0_over_sejours": 75.5,
-                "delai_moyen_validation": 0.7,
+                "total_sejours": 200,
+                "nb_sejours_valides": 200,
+                "pct_sejours_validees": 100.0,
+                "taux_validation_j0_over_sejours": 100.0,
+                "delai_moyen_validation": 0.0,
+            },
+            {
+                "specialite": "PNEUMOLOGIE",
+                "total_sejours": 90,
+                "nb_sejours_valides": 70,
+                "pct_sejours_validees": 77.8,
+                "taux_validation_j0_over_sejours": 77.8,
+                "delai_moyen_validation": 0.5,
+            },
+            {
+                "specialite": "MEDECINE INTERNE",
+                "total_sejours": 60,
+                "nb_sejours_valides": 40,
+                "pct_sejours_validees": 66.7,
+                "taux_validation_j0_over_sejours": 66.7,
+                "delai_moyen_validation": 0.8,
+            },
+            {
+                "specialite": "ONCOLOGIE",
+                "total_sejours": 80,
+                "nb_sejours_valides": 40,
+                "pct_sejours_validees": 50.0,
+                "taux_validation_j0_over_sejours": 50.0,
+                "delai_moyen_validation": 1.2,
             },
         ],
     }
 
     test_stats_diffusion = {
-        "nb_ll_diffusees_all": 1603,
+        "nb_ll_diffusees_all": 1508,
         "pct_ll_diffusees_over_validees_all": 100.0,
-        "delai_diffusion_validation_all": 0.8,
+        "pct_ll_diffusees_over_sejours_all": 94.3,
+        "taux_diffusion_J0_validation_all": 85.0,
+        "delai_diffusion_validation_all": 0.3,
         "par_specialite": [
             {
-                "specialite": "VASCULAIRE",
-                "nb_ll_diffusees": 117,
+                "specialite": "GERIATRIE",
+                "nb_ll_diffusees": 150,
                 "pct_ll_diffusees_over_validees": 100.0,
-                "delai_diffusion_validation": 0.8,
+                "pct_ll_diffusees_over_sejours": 100.0,
+                "taux_diffusion_J0_validation": 95.0,
+                "delai_diffusion_validation": 0.1,
             },
             {
-                "specialite": "NEUROCHIRURGIE",
-                "nb_ll_diffusees": 140,
+                "specialite": "THORACIQUE",
+                "nb_ll_diffusees": 120,
                 "pct_ll_diffusees_over_validees": 100.0,
-                "delai_diffusion_validation": 0.5,
+                "pct_ll_diffusees_over_sejours": 100.0,
+                "taux_diffusion_J0_validation": 90.0,
+                "delai_diffusion_validation": 0.2,
             },
             {
                 "specialite": "CARDIOLOGIE",
-                "nb_ll_diffusees": 180,
+                "nb_ll_diffusees": 200,
                 "pct_ll_diffusees_over_validees": 100.0,
-                "delai_diffusion_validation": 0.7,
+                "pct_ll_diffusees_over_sejours": 100.0,
+                "taux_diffusion_J0_validation": 92.0,
+                "delai_diffusion_validation": 0.2,
+            },
+            {
+                "specialite": "PNEUMOLOGIE",
+                "nb_ll_diffusees": 70,
+                "pct_ll_diffusees_over_validees": 100.0,
+                "pct_ll_diffusees_over_sejours": 77.8,
+                "taux_diffusion_J0_validation": 80.0,
+                "delai_diffusion_validation": 0.4,
+            },
+            {
+                "specialite": "MEDECINE INTERNE",
+                "nb_ll_diffusees": 40,
+                "pct_ll_diffusees_over_validees": 100.0,
+                "pct_ll_diffusees_over_sejours": 66.7,
+                "taux_diffusion_J0_validation": 75.0,
+                "delai_diffusion_validation": 0.5,
+            },
+            {
+                "specialite": "ONCOLOGIE",
+                "nb_ll_diffusees": 40,
+                "pct_ll_diffusees_over_validees": 100.0,
+                "pct_ll_diffusees_over_sejours": 50.0,
+                "taux_diffusion_J0_validation": 70.0,
+                "delai_diffusion_validation": 0.6,
             },
         ],
     }
 
-    generate_excel(
+    # Créer un DataFrame de test
+    test_df = pd.DataFrame(
+        {
+            "sej_id": [f"SEJ{i:04d}" for i in range(100)],
+            "sej_classe": ["0j"] * 81 + ["1j+"] * 13 + ["sansLL"] * 6,
+            "sej_spe_final": ["CARDIOLOGIE"] * 30
+            + ["GERIATRIE"] * 25
+            + ["THORACIQUE"] * 20
+            + ["PNEUMOLOGIE"] * 15
+            + ["ONCOLOGIE"] * 10,
+        }
+    )
+
+    # Générer le fichier Excel
+    excel_bytes = generate_excel(
         test_stats_validation,
         test_stats_diffusion,
-        "01/01 au 31/07/2025 (TEST)",
+        "01/01 au 31/01/2020 (TEST)",
+        df_analysis=test_df,
     )
-    print("\n✅ Test terminé !")
+
+    # Sauvegarder pour test
+    with open("test_output_with_charts.xlsx", "wb") as f:
+        f.write(excel_bytes)
+
+    print("\n✅ Test terminé ! Fichier sauvegardé : test_output_with_charts.xlsx")
