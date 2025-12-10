@@ -113,7 +113,7 @@ def get_sejours_data(
         # Filtre par dates
         if start_date and end_date:
             filters.append(
-                f"ho_dfin BETWEEN TO_DATE('{start_date}', 'YYYY-MM-DD') AND TO_DATE('{end_date}', 'YYYY-MM-DD')"
+                f"ho_dfin >= '{start_date}' AND ho_dfin < DATEADD(DAY, 1, '{end_date}')"
             )
         elif not sejour_list:
             # Par défaut uniquement si aucune date ET aucune liste de séjours
@@ -224,7 +224,7 @@ def get_documents_data(
         """
         # Ajout des conditions de date
         if start_date and end_date:
-            query += f" AND fhs.fic_date_statut_validation BETWEEN '{start_date}' AND '{end_date}'"
+            query += f"fhs.fic_date_statut_validation >= '{start_date}' AND fhs.fic_date_statut_validation < DATEADD(MONTH, 1, '{end_date}')"
         else:
             pass
 
