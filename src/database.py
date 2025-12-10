@@ -82,7 +82,7 @@ def get_sejours_data(
     """
     db = DatabaseConnector()
     try:
-        conn = db.connect_gam  # Sans parenthèses
+        conn = db.connect_gam
         cursor = conn.cursor()
 
         # Construction de la requête SQL de base
@@ -113,7 +113,7 @@ def get_sejours_data(
         # Filtre par dates
         if start_date and end_date:
             filters.append(
-                f"ho_dfin >= '{start_date}' AND ho_dfin < DATEADD(DAY, 1, '{end_date}')"
+                f"ho_dfin >= TO_DATE('{start_date}', 'YYYY-MM-DD') AND ho_dfin < TO_DATE('{end_date}', 'YYYY-MM-DD') + 1"
             )
         elif not sejour_list:
             # Par défaut uniquement si aucune date ET aucune liste de séjours
@@ -164,7 +164,7 @@ def get_sejours_data(
         if "uf_sortie" in df.columns:
             df["sej_uf"] = df["uf_sortie"].str[:3]
         else:
-            print(f"⚠️ Colonne 'uf_sortie' introuvable")
+            print("⚠️ Colonne 'uf_sortie' introuvable")
 
         return df
 
@@ -224,11 +224,10 @@ def get_documents_data(
         """
         # Ajout des conditions de date
         if start_date and end_date:
-            query += f"fhs.fic_date_statut_validation >= '{start_date}' AND fhs.fic_date_statut_validation < DATEADD(MONTH, 1, '{end_date}')"
+            query += f"AND fhs.fic_date_statut_validation >= CAST('{start_date}' AS DATE) AND fhs.fic_date_statut_validation < DATEADD(MONTH, 1, CAST('{end_date}' AS DATE))"
         else:
             pass
 
-        # ✅ SOLUTION : Utiliser pandas directement avec pyodbc
         df = pd.read_sql(query, conn)
 
         # Conversion des dates

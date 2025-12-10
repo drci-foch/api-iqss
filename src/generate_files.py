@@ -7,7 +7,7 @@ import unicodedata
 from database import get_sejours_data, get_documents_data
 from data_processing import (
     merge_sejours_documents,
-    classify_sejours_iql,
+    # classify_sejours_iql,
     calculate_validation_stats,
     calculate_diffusion_stats,
 )
@@ -101,7 +101,7 @@ def generate_report_data(
 
     # 4. Classifier les séjours selon IQL
 
-    data = classify_sejours_iql(data, matrice_path)
+    # data = classify_sejours_iql(data, matrice_path)
 
     # Afficher la répartition des classes
     class_counts = data["sej_classe"].value_counts()

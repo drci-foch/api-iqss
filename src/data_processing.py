@@ -107,57 +107,93 @@ def create_doc_key(libelle: str) -> str:
 
 
 def merge_sejours_documents(
-    sejours: pd.DataFrame, documents: pd.DataFrame
+    sejours: pd.DataFrame, documents: pd.DataFrame, matrice_path: Optional[str] = None
 ) -> pd.DataFrame:
     """
     Fusionne les données de séjours et documents selon la méthodologie IQL R v7
 
-    Nouveaux critères de rattachement (v7) :
-    1. sdt_docven : Numéro de venue correspond
-    2. sdt_docval : Doc validé après entrée ET ≥ (sortie - 3j)
-    3. sdt_smere : Fiche mère créée/modifiée AVANT la sortie
-    4. sdt_doccre : Doc créé après entrée - 5j
-    5. sdt_doccref : Doc créé DURANT le séjour (critère préférentiel)
-    6. sdt_emere : Fiche mère créée/modifiée après entrée - 5j
-
-    Critère minimal : (sdt_docval + sdt_smere + sdt_doccre) > 2
-
-    Priorisation (ordre de tri) :
-    1. Présence de spécialité (sej_spe)
-    2. Venue correspondante (sdt_docven)
-    3. Fiche mère valide (sdt_emere)
-    4. Critères minimaux OK (sdt_status)
-    5. Doc créé durant séjour (sdt_doccref)
-    6. Délai de validation (del_sorval)
+    ORDRE DES OPÉRATIONS (conforme au code R lignes 177-248):
+    1. Jointure séjours × documents sur pat_ipp (R ligne 181)
+    2. Jointure avec matrice de spécialité (ufum) sur sej_uf + doc_key (R ligne 184)
+    3. Calcul des critères booléens sdt_* (R lignes 188-213)
+    4. Calcul de del_sorval si sdt_status=TRUE (R lignes 211-213)
+    5. PREMIER TRI : is.na(sej_spe), del_sorval → pref_sorval (R ligne 220-221)
+    6. DEUXIÈME TRI : is.na(sej_spe), desc(sdt_docven), desc(sdt_emere),
+                      desc(sdt_status), desc(sdt_doccref), del_sorval → pref_ficmere (R ligne 224-225)
+    7. Sélection du meilleur document : pref_ficmere == min(pref_ficmere) (R ligne 230)
+    8. Gestion des documents multi-séjours : del_sorval=NA si doc_sejn > 1 (R lignes 232-237)
+    9. Calcul de del_val APRÈS gestion multi-séjours (R ligne 241)
+    10. Classification sej_classe (R lignes 243-247)
 
     Args:
         sejours: DataFrame des séjours (GAM)
         documents: DataFrame des documents (EASILY)
+        matrice_path: Chemin vers la matrice de spécialité (optionnel)
 
     Returns:
         DataFrame avec UN séjour par ligne et son document optimal
     """
+    # Import settings ici pour éviter les imports circulaires
+    from config import settings
+
+    if matrice_path is None:
+        matrice_path = settings.MATRICE_PATH
+
     sejours = sejours.copy()
     documents = documents.copy()
 
-    print("\n🔗 Fusion séjours × documents (méthodologie R v7)...")
+    print("\n🔗 Fusion séjours × documents (méthodologie R v7 - CORRIGÉE)...")
 
-    # Préparer les clés de jointure
+    # ========================================
+    # ÉTAPE 1 : PRÉPARATION DES DONNÉES
+    # ========================================
+
     sejours["pat_ipp"] = sejours["pat_ipp"].astype(str)
     documents["pat_ipp"] = documents["pat_ipp"].astype(str)
+    sejours["sej_uf"] = sejours["sej_uf"].astype(str)
 
-    # Créer les clés de documents si nécessaire
     if "doc_key" not in documents.columns:
         documents["doc_key"] = documents["doc_libelle"].apply(create_doc_key)
 
+    documents["doc_key_norm"] = documents["doc_key"].apply(normalize_text)
+
     print(f"   📊 {len(sejours)} séjours × {len(documents)} documents")
 
-    # Fusionner sur l'IPP
-    data = sejours.merge(documents, on="pat_ipp", how="left", suffixes=("", "_doc"))
+    # ========================================
+    # ÉTAPE 2 : JOINTURE SÉJOURS × DOCUMENTS SUR IPP (R ligne 181)
+    # ========================================
 
+    data = sejours.merge(documents, on="pat_ipp", how="left", suffixes=("", "_doc"))
     print(f"   ✅ Jointure IPP : {len(data)} lignes")
 
-    # Convertir les dates
+    # ========================================
+    # ÉTAPE 3 : JOINTURE AVEC MATRICE DE SPÉCIALITÉ (R ligne 184)
+    # ========================================
+
+    print("\n🏥 Jointure avec matrice de spécialité (AVANT tri)...")
+
+    try:
+        matrice = load_matrice_specialite(matrice_path)
+
+        data = data.merge(
+            matrice[["sej_uf", "doc_key_norm", "sej_spe"]],
+            on=["sej_uf", "doc_key_norm"],
+            how="left",
+        )
+
+        nb_with_spe = data["sej_spe"].notna().sum()
+        print(
+            f"   ✅ Spécialité trouvée pour {nb_with_spe} lignes ({nb_with_spe / len(data) * 100:.1f}%)"
+        )
+
+    except Exception as e:
+        print(f"   ⚠️ Impossible de charger la matrice : {e}")
+        data["sej_spe"] = None
+
+    # ========================================
+    # ÉTAPE 4 : CONVERSION DES DATES
+    # ========================================
+
     data["sej_sor"] = pd.to_datetime(data["sej_sor"])
     data["sej_ent"] = pd.to_datetime(data["sej_ent"])
     data["doc_val"] = pd.to_datetime(data["doc_val"])
@@ -168,27 +204,29 @@ def merge_sejours_documents(
     if "doc_modmere" in data.columns:
         data["doc_modmere"] = pd.to_datetime(data["doc_modmere"])
 
+    # ========================================
+    # ÉTAPE 5 : CALCUL DES CRITÈRES BOOLÉENS (R lignes 188-213)
+    # ========================================
+
     print("\n🔍 Application des critères de rattachement R v7...")
 
-    # ========================================
-    # NOUVEAUX CRITÈRES BOOLÉENS (R v7)
-    # ========================================
-
-    # 1. sdt_docven : Le numéro de venue du doc est-il celui du séjour ?
+    # 1. sdt_docven (R ligne 190-191)
     if "doc_venue" in data.columns:
-        data["sdt_docven"] = data["sej_id"] == data["doc_venue"].astype(str)
+        data["doc_venue"] = pd.to_numeric(data["doc_venue"], errors="coerce")
+        data["sej_id_num"] = pd.to_numeric(data["sej_id"], errors="coerce")
+        data["sdt_docven"] = data["sej_id_num"] == data["doc_venue"]
+        data.drop(columns=["sej_id_num"], inplace=True)
         print(f"   ✅ sdt_docven : {data['sdt_docven'].sum()} correspondances venue")
     else:
         data["sdt_docven"] = False
-        print(f"   ⚠️ sdt_docven : colonne doc_venue absente, critère désactivé")
 
-    # 2. sdt_docval : Doc validé après entrée ET ≥ (sortie - 3 jours)
+    # 2. sdt_docval (R ligne 193-194)
     data["sdt_docval"] = (data["doc_val"] >= data["sej_ent"]) & (
         data["doc_val"] >= (data["sej_sor"] - pd.Timedelta(days=3))
     )
     print(f"   ✅ sdt_docval : {data['sdt_docval'].sum()} docs dans fenêtre temporelle")
 
-    # 3. sdt_smere : Fiche mère créée OU modifiée AVANT la sortie
+    # 3. sdt_smere (R ligne 196-197)
     if "doc_creamere" in data.columns and "doc_modmere" in data.columns:
         data["sdt_smere"] = (
             data["doc_creamere"].isna()
@@ -197,20 +235,19 @@ def merge_sejours_documents(
         )
         print(f"   ✅ sdt_smere : {data['sdt_smere'].sum()} fiches mères avant sortie")
     else:
-        data["sdt_smere"] = True  # Par défaut si pas de fiche mère
-        print(f"   ⚠️ sdt_smere : colonnes fiche mère absentes, critère désactivé")
+        data["sdt_smere"] = True
 
-    # 4. sdt_doccre : Doc créé après entrée - 5 jours
+    # 4. sdt_doccre (R ligne 199-200)
     data["sdt_doccre"] = data["doc_cre"] >= (data["sej_ent"] - pd.Timedelta(days=5))
     print(f"   ✅ sdt_doccre : {data['sdt_doccre'].sum()} docs créés après entrée-5j")
 
-    # 5. sdt_doccref : Doc créé DURANT le séjour (critère préférentiel)
+    # 5. sdt_doccref (R ligne 202-203)
     data["sdt_doccref"] = (data["doc_cre"] >= data["sej_ent"]) & (
         data["doc_cre"] <= data["sej_sor"]
     )
     print(f"   ✅ sdt_doccref : {data['sdt_doccref'].sum()} docs créés durant séjour")
 
-    # 6. sdt_emere : Fiche mère créée/modifiée après entrée - 5j
+    # 6. sdt_emere (R ligne 205-207)
     if "doc_creamere" in data.columns and "doc_modmere" in data.columns:
         data["sdt_emere"] = (
             data["doc_creamere"].isna()
@@ -222,143 +259,212 @@ def merge_sejours_documents(
         )
     else:
         data["sdt_emere"] = True
-        print(f"   ⚠️ sdt_emere : colonnes fiche mère absentes, critère désactivé")
 
-    # ========================================
-    # CRITÈRE MINIMAL DE RATTACHEMENT
-    # ========================================
-    # Il faut au moins 3 critères vrais parmi : docval, smere, doccre
+    # 7. sdt_status (R ligne 210)
     data["sdt_status"] = (
         data["sdt_docval"].astype(int)
         + data["sdt_smere"].astype(int)
         + data["sdt_doccre"].astype(int)
     ) > 2
-
     print(
         f"   ✅ sdt_status : {data['sdt_status'].sum()} lignes avec critères minimaux OK"
     )
 
-    # Calculer del_sorval seulement si critères minimaux OK
+    # 8. del_sorval (R lignes 211-213)
+    # R: del_sorval=case_when(sdt_status == TRUE ~ as.numeric(difftime(doc_val,sej_sor,units = "days")), TRUE ~ NA_real_)
     data["del_sorval"] = np.where(
         data["sdt_status"], (data["doc_val"] - data["sej_sor"]).dt.days, np.nan
     )
-
     nb_with_delay = data["del_sorval"].notna().sum()
     print(f"   ✅ del_sorval calculé pour {nb_with_delay} lignes")
 
     # ========================================
-    # JOINTURE AVEC MATRICE DE SPÉCIALITÉ
+    # ÉTAPE 6 : PREMIER TRI - pref_sorval (R lignes 220-221)
     # ========================================
-    # (pour pouvoir trier par sej_spe)
+    # R: arrange(is.na(sej_spe), del_sorval) |> mutate(pref_sorval=row_number())
 
-    print("\n🏥 Jointure avec matrice de spécialité...")
+    print("\n📊 Premier tri (pref_sorval) : is.na(sej_spe), del_sorval...")
 
-    try:
-        matrice = load_matrice_specialite(settings.MATRICE_PATH)
+    # Créer colonne pour le tri (True si sej_spe est NA → à mettre en dernier)
+    data["spe_is_na"] = data["sej_spe"].isna()
 
-        # Créer doc_key_norm si nécessaire
-        if "doc_key_norm" not in data.columns:
-            data["doc_key_norm"] = data["doc_key"].apply(normalize_text)
-
-        # Jointure
-        data = data.merge(
-            matrice[["sej_uf", "doc_key_norm", "sej_spe"]],
-            on=["sej_uf", "doc_key_norm"],
-            how="left",
-            suffixes=("", "_matrice"),
-        )
-
-        nb_with_spe = data["sej_spe"].notna().sum()
-        print(
-            f"   ✅ Spécialité trouvée pour {nb_with_spe} lignes ({nb_with_spe / len(data) * 100:.1f}%)"
-        )
-
-    except Exception as e:
-        print(f"   ⚠️ Impossible de charger la matrice : {e}")
-        print(f"   ⚠️ Le tri par spécialité sera désactivé")
-        data["sej_spe"] = None
-
-    # ========================================
-    # PRIORISATION DES DOCUMENTS (R v7)
-    # ========================================
-    # Trier selon l'ordre de préférence R
-
-    print("\n📊 Priorisation des documents (tri multi-critères)...")
-
-    # Créer une colonne booléenne : True si sej_spe existe, False sinon
-    data["has_spe"] = data["sej_spe"].notna()
-
-    # Pour chaque séjour, trier les documents candidats
-    data_sorted = data.sort_values(
-        by=[
-            "sej_id",
-            "has_spe",  # 1. Prioriser ceux avec spécialité
-            "sdt_docven",  # 2. Prioriser si venue correspond
-            "sdt_emere",  # 3. Prioriser si fiche mère après entrée
-            "sdt_status",  # 4. Prioriser si critères minimaux OK
-            "sdt_doccref",  # 5. Prioriser si doc créé durant séjour
-            "del_sorval",  # 6. Puis trier par délai (croissant)
-        ],
-        ascending=[True, False, False, False, False, False, True],
+    # Trier par sej_id, puis is.na(sej_spe) ASC, puis del_sorval ASC
+    data = data.sort_values(
+        by=["sej_id", "spe_is_na", "del_sorval"],
+        ascending=[True, True, True],
         na_position="last",
     )
 
-    # Garder le meilleur document pour chaque séjour
-    data_best = data_sorted.groupby("sej_id", as_index=False).first()
-
-    print(f"   ✅ Meilleur document sélectionné pour {len(data_best)} séjours")
+    # Calculer pref_sorval par groupe sej_id
+    data["pref_sorval"] = data.groupby("sej_id").cumcount() + 1
 
     # ========================================
-    # GESTION DES DOCUMENTS MULTI-SÉJOURS
+    # ÉTAPE 7 : DEUXIÈME TRI - pref_ficmere (R lignes 224-225)
     # ========================================
-    # Si un document est associé à plusieurs séjours, ne garder que le plus proche
+    # R: arrange(is.na(sej_spe), desc(sdt_docven), desc(sdt_emere), desc(sdt_status), desc(sdt_doccref), del_sorval)
+    #    mutate(pref_ficmere=row_number())
 
-    print("\n🔄 Gestion des documents multi-séjours...")
+    print(
+        "📊 Deuxième tri (pref_ficmere) : is.na(sej_spe), desc(sdt_docven), desc(sdt_emere), desc(sdt_status), desc(sdt_doccref), del_sorval..."
+    )
 
-    # Pour chaque doc_id, compter combien de séjours l'utilisent
+    data = data.sort_values(
+        by=[
+            "sej_id",
+            "spe_is_na",  # is.na(sej_spe) ASC → ceux AVEC spe en premier
+            "sdt_docven",  # desc(sdt_docven) → True en premier
+            "sdt_emere",  # desc(sdt_emere) → True en premier
+            "sdt_status",  # desc(sdt_status) → True en premier
+            "sdt_doccref",  # desc(sdt_doccref) → True en premier
+            "del_sorval",  # del_sorval ASC → plus petit en premier
+        ],
+        ascending=[True, True, False, False, False, False, True],
+        na_position="last",
+    )
+
+    # Calculer pref_ficmere par groupe sej_id
+    data["pref_ficmere"] = data.groupby("sej_id").cumcount() + 1
+
+    print(f"   ✅ Tris effectués sur {len(data)} lignes")
+
+    # ========================================
+    # ÉTAPE 8 : SÉLECTION DU MEILLEUR DOCUMENT (R ligne 230)
+    # ========================================
+    # R: filter(.by=c(pat_ipp,sej_id), pref_ficmere==min(pref_ficmere))
+
+    print("\n📊 Sélection du meilleur document (pref_ficmere == 1)...")
+
+    data_best = data[data["pref_ficmere"] == 1].copy()
+
+    print(f"   ✅ {len(data_best)} séjours avec leur meilleur document")
+
+    # ========================================
+    # ÉTAPE 9 : GESTION DES DOCUMENTS MULTI-SÉJOURS (R lignes 232-237)
+    # ========================================
+    # R:
+    # group_by(doc_id) |>
+    # arrange(del_sorval) |>
+    # mutate(doc_sejn=row_number()) |>
+    # mutate(del_sorval=ifelse(doc_sejn==1,del_sorval,NA_real_),
+    #        sdt_doclibre=ifelse(doc_sejn==1,TRUE,FALSE))
+
+    print("\n🔄 Gestion des documents multi-séjours (R lignes 232-237)...")
+
+    # Initialiser sdt_doclibre à True par défaut
+    data_best["sdt_doclibre"] = True
+    data_best["doc_sejn"] = 1
+
+    # Identifier les docs utilisés par plusieurs séjours
     doc_counts = data_best[data_best["doc_id"].notna()].groupby("doc_id").size()
-    multi_sejour_docs = doc_counts[doc_counts > 1].index
+    multi_sejour_docs = doc_counts[doc_counts > 1].index.tolist()
 
     if len(multi_sejour_docs) > 0:
         print(f"   ⚠️ {len(multi_sejour_docs)} documents associés à plusieurs séjours")
 
-        # Pour ces documents, marquer comme "libre" seulement le séjour le plus proche
         for doc_id in multi_sejour_docs:
             mask = data_best["doc_id"] == doc_id
-            doc_sejours = data_best[mask].copy()
 
-            # Trier par del_sorval (le plus proche)
-            doc_sejours_sorted = doc_sejours.sort_values("del_sorval")
-
-            # Seul le premier garde le document
-            closest_sej = doc_sejours_sorted.iloc[0]["sej_id"]
-
-            # Mettre del_sorval à NaN pour les autres
-            data_best.loc[mask & (data_best["sej_id"] != closest_sej), "del_sorval"] = (
-                np.nan
+            # Trier par del_sorval (comme R: arrange(del_sorval))
+            # Récupérer les indices triés
+            doc_sejours = data_best.loc[mask].sort_values(
+                "del_sorval", na_position="last"
             )
+
+            # Numéroter (doc_sejn = row_number())
+            doc_sejn_values = range(1, len(doc_sejours) + 1)
+
+            # Appliquer doc_sejn
+            for i, (idx, _) in enumerate(doc_sejours.iterrows()):
+                data_best.loc[idx, "doc_sejn"] = i + 1
+
+                if i == 0:
+                    # Premier séjour (le plus proche) : garde del_sorval et sdt_doclibre=True
+                    data_best.loc[idx, "sdt_doclibre"] = True
+                else:
+                    # Autres séjours : del_sorval=NA et sdt_doclibre=False
+                    data_best.loc[idx, "del_sorval"] = np.nan
+                    data_best.loc[idx, "sdt_doclibre"] = False
 
         print(f"   ✅ Documents multi-séjours traités")
     else:
         print(f"   ✅ Aucun document multi-séjours")
 
     # ========================================
-    # AJOUT DES SÉJOURS SANS DOCUMENT
+    # ÉTAPE 10 : CALCUL DE del_val APRÈS multi-séjours (R ligne 241)
     # ========================================
+    # R: del_val=case_when(is.na(del_sorval)|is.infinite(del_sorval)|is.na(sej_spe) ~ NA,
+    #                      TRUE ~ max(0,del_sorval))
+
+    print("\n📊 Calcul de del_val (APRÈS gestion multi-séjours)...")
+
+    data_best["del_val"] = data_best.apply(
+        lambda row: np.nan
+        if (
+            pd.isna(row["del_sorval"]) or np.isinf(row["del_sorval"])
+            if pd.notna(row["del_sorval"])
+            else True
+        )
+        or pd.isna(row["sej_spe"])
+        else max(0, row["del_sorval"]),
+        axis=1,
+    )
+
+    nb_with_delval = data_best["del_val"].notna().sum()
+    print(f"   ✅ del_val calculé pour {nb_with_delval} séjours")
+
+    # ========================================
+    # ÉTAPE 11 : CLASSIFICATION sej_classe (R lignes 243-247)
+    # ========================================
+    # R: sej_classe=factor(case_when(del_val==0 ~ 0, del_val>0 ~ 1, TRUE ~ 2),
+    #                      levels = c(0, 1, 2), labels = status_libelle)
+
+    print("📊 Classification sej_classe...")
+
+    def classify_sejour(del_val):
+        if pd.isna(del_val):
+            return "sansLL"
+        elif del_val == 0:
+            return "0j"
+        else:  # del_val > 0
+            return "1j+"
+
+    data_best["sej_classe"] = data_best["del_val"].apply(classify_sejour)
+
+    # Afficher la répartition
+    class_counts = data_best["sej_classe"].value_counts()
+    print(f"   ✅ Classification terminée:")
+    for classe in ["0j", "1j+", "sansLL"]:
+        if classe in class_counts.index:
+            count = class_counts[classe]
+            pct = count / len(data_best) * 100
+            print(f"      - {classe}: {count} ({pct:.1f}%)")
+
+    # ========================================
+    # ÉTAPE 12 : AJOUT DES SÉJOURS SANS DOCUMENT
+    # ========================================
+
     sejours_sans_doc = sejours[~sejours["sej_id"].isin(data_best["sej_id"])].copy()
 
     if len(sejours_sans_doc) > 0:
-        print(f"   ℹ️ {len(sejours_sans_doc)} séjours sans aucun document rattaché")
-        # Ajouter les colonnes manquantes avec NaN
+        print(f"\n   ℹ️ {len(sejours_sans_doc)} séjours sans aucun document rattaché")
+
+        # Ajouter les colonnes manquantes
         for col in data_best.columns:
             if col not in sejours_sans_doc.columns:
                 sejours_sans_doc[col] = np.nan
+
+        # Ces séjours sont classés sansLL
+        sejours_sans_doc["sej_classe"] = "sansLL"
+        sejours_sans_doc["sdt_doclibre"] = True
 
         data_final = pd.concat([data_best, sejours_sans_doc], ignore_index=True)
     else:
         data_final = data_best
 
-    # Vérifications finales
+    # ========================================
+    # VÉRIFICATIONS FINALES
+    # ========================================
+
     nb_sejours_initial = len(sejours)
     nb_sejours_final = len(data_final)
 
@@ -366,126 +472,136 @@ def merge_sejours_documents(
         f"\n✅ Fusion terminée : {nb_sejours_initial} séjours → {nb_sejours_final} lignes"
     )
 
-    nb_avec_ll = data_final["doc_val"].notna().sum()
+    nb_avec_ll = (data_final["sej_classe"] != "sansLL").sum()
+    nb_avec_spe = data_final["sej_spe"].notna().sum()
     print(
-        f"📊 Avec LL validée : {nb_avec_ll} ({nb_avec_ll / nb_sejours_final * 100:.1f}%)"
+        f"📊 Avec LL (0j ou 1j+) : {nb_avec_ll} ({nb_avec_ll / nb_sejours_final * 100:.1f}%)"
     )
+    print(
+        f"📊 Avec spécialité : {nb_avec_spe} ({nb_avec_spe / nb_sejours_final * 100:.1f}%)"
+    )
+
+    # Nettoyer les colonnes temporaires
+    cols_to_drop = ["spe_is_na", "pref_sorval", "pref_ficmere", "doc_sejn"]
+    for col in cols_to_drop:
+        if col in data_final.columns:
+            data_final.drop(columns=[col], inplace=True)
 
     return data_final
 
 
-def classify_sejours_iql(df: pd.DataFrame, matrice_path: str = None) -> pd.DataFrame:
-    """
-    Classifie les séjours selon la méthodologie IQL R v7
+# def classify_sejours_iql(df: pd.DataFrame, matrice_path: str = None) -> pd.DataFrame:
+#     """
+#     Classifie les séjours selon la méthodologie IQL R v7
 
-    Changements v7 :
-    - Utilise del_val (≥ 0) au lieu de del_sorval
-    - del_val = max(0, del_sorval) si spécialité associée
-    - Si la jointure avec la matrice a déjà été faite dans merge_sejours_documents,
-      on ne la refait pas
+#     Changements v7 :
+#     - Utilise del_val (≥ 0) au lieu de del_sorval
+#     - del_val = max(0, del_sorval) si spécialité associée
+#     - Si la jointure avec la matrice a déjà été faite dans merge_sejours_documents,
+#       on ne la refait pas
 
-    Règles de classification:
-    - "0j" : LL validée au plus tard le jour de la sortie (del_val == 0)
-    - "1j+" : LL validée après la sortie (del_val > 0)
-    - "sansLL" : Aucune LL validée OU pas de spécialité associée
+#     Règles de classification:
+#     - "0j" : LL validée au plus tard le jour de la sortie (del_val == 0)
+#     - "1j+" : LL validée après la sortie (del_val > 0)
+#     - "sansLL" : Aucune LL validée OU pas de spécialité associée
 
-    Args:
-        df: DataFrame contenant les séjours et documents
-        matrice_path: Chemin vers la matrice de spécialité (optionnel)
+#     Args:
+#         df: DataFrame contenant les séjours et documents
+#         matrice_path: Chemin vers la matrice de spécialité (optionnel)
 
-    Returns:
-        DataFrame avec colonnes 'sej_spe_final' et 'sej_classe' ajoutées
-    """
-    df = df.copy()
+#     Returns:
+#         DataFrame avec colonnes 'sej_spe_final' et 'sej_classe' ajoutées
+#     """
+#     df = df.copy()
 
-    print("\n🏷️ Classification des séjours (IQL R v7)...")
+#     print("\n🏷️ Classification des séjours (IQL R v7)...")
 
-    # ========================================
-    # VÉRIFIER SI LA JOINTURE A DÉJÀ ÉTÉ FAITE
-    # ========================================
-    if "sej_spe" in df.columns and df["sej_spe"].notna().sum() > 0:
-        print("   ℹ️ Spécialités déjà jointes dans merge_sejours_documents()")
-        df["sej_spe_final"] = df["sej_spe"]
-    else:
-        print("   ℹ️ Jointure avec matrice de spécialité nécessaire")
+#     # ========================================
+#     # VÉRIFIER SI LA JOINTURE A DÉJÀ ÉTÉ FAITE
+#     # ========================================
+#     if "sej_spe" in df.columns and df["sej_spe"].notna().sum() > 0:
+#         print("   ℹ️ Spécialités déjà jointes dans merge_sejours_documents()")
+#         df["sej_spe_final"] = df["sej_spe"]
+#     else:
+#         print("   ℹ️ Jointure avec matrice de spécialité nécessaire")
 
-        # Utiliser le chemin depuis settings si non fourni
-        if matrice_path is None:
-            matrice_path = settings.MATRICE_PATH
+#         # Utiliser le chemin depuis settings si non fourni
+#         if matrice_path is None:
+#             matrice_path = settings.MATRICE_PATH
 
-        # Charger la matrice de spécialité
-        try:
-            matrice = load_matrice_specialite(matrice_path)
-        except Exception as e:
-            print(f"⚠️ Erreur chargement matrice: {e}")
-            # Fallback: utiliser doc_spe comme spécialité
-            df["sej_spe_final"] = df.get("doc_spe")
-            df["sej_classe"] = "sansLL"
-            return df
+#         # Charger la matrice de spécialité
+#         try:
+#             matrice = load_matrice_specialite(matrice_path)
+#         except Exception as e:
+#             print(f"⚠️ Erreur chargement matrice: {e}")
+#             # Fallback: utiliser doc_spe comme spécialité
+#             df["sej_spe_final"] = df.get("doc_spe")
+#             df["sej_classe"] = "sansLL"
+#             return df
 
-        # Préparer les données pour le matching
-        df["sej_uf"] = df["sej_uf"].astype(str)
+#         # Préparer les données pour le matching
+#         df["sej_uf"] = df["sej_uf"].astype(str)
 
-        # Créer doc_key normalisée si nécessaire
-        if "doc_key" not in df.columns:
-            df["doc_key"] = df["doc_libelle"].apply(create_doc_key)
+#         # Créer doc_key normalisée si nécessaire
+#         if "doc_key" not in df.columns:
+#             df["doc_key"] = df["doc_libelle"].apply(create_doc_key)
 
-        df["doc_key_norm"] = df["doc_key"].apply(normalize_text)
+#         df["doc_key_norm"] = df["doc_key"].apply(normalize_text)
 
-        # Joindre avec la matrice de spécialité
-        df = df.merge(
-            matrice[["sej_uf", "doc_key_norm", "sej_spe"]],
-            on=["sej_uf", "doc_key_norm"],
-            how="left",
-            suffixes=("_old", "_matrice"),
-        )
+#         # Joindre avec la matrice de spécialité
+#         df = df.merge(
+#             matrice[["sej_uf", "doc_key_norm", "sej_spe"]],
+#             on=["sej_uf", "doc_key_norm"],
+#             how="left",
+#             suffixes=("_old", "_matrice"),
+#         )
 
-        # Déterminer la spécialité finale
-        if "sej_spe_matrice" in df.columns:
-            df["sej_spe_final"] = df["sej_spe_matrice"]
-        elif "sej_spe" in df.columns:
-            df["sej_spe_final"] = df["sej_spe"]
-        else:
-            df["sej_spe_final"] = None
+#         # Déterminer la spécialité finale
+#         if "sej_spe_matrice" in df.columns:
+#             df["sej_spe_final"] = df["sej_spe_matrice"]
+#         elif "sej_spe" in df.columns:
+#             df["sej_spe_final"] = df["sej_spe"]
+#         else:
+#             df["sej_spe_final"] = None
 
-    # ========================================
-    # CALCULER del_val (R v7)
-    # ========================================
-    # del_val = max(0, del_sorval) si spécialité associée
-    # Sinon NA
+#     # ========================================
+#     # CALCULER del_val (R v7)
+#     # ========================================
+#     # del_val = max(0, del_sorval) si spécialité associée
+#     # Sinon NA
 
-    print("\n📏 Calcul de del_val (délai réajusté ≥ 0)...")
+#     print("\n📏 Calcul de del_val (délai réajusté ≥ 0)...")
 
-    df["del_val"] = df.apply(
-        lambda row: max(0, row["del_sorval"])
-        if pd.notna(row["del_sorval"])
-        and not np.isinf(row["del_sorval"])
-        and pd.notna(row["sej_spe_final"])
-        else np.nan,
-        axis=1,
-    )
+#     df["del_val"] = df.apply(
+#         lambda row: max(0, row["del_sorval"])
+#         if pd.notna(row["del_sorval"])
+#         and not np.isinf(row["del_sorval"])
+#         and pd.notna(row["sej_spe_final"])
+#         else np.nan,
+#         axis=1,
+#     )
 
-    nb_with_delval = df["del_val"].notna().sum()
-    print(f"   ✅ del_val calculé pour {nb_with_delval} séjours")
+#     nb_with_delval = df["del_val"].notna().sum()
+#     print(f"   ✅ del_val calculé pour {nb_with_delval} séjours")
 
-    # ========================================
-    # Classification selon del_val (pas del_sorval)
-    # ========================================
-    df["sej_classe"] = "sansLL"
+#     # ========================================
+#     # Classification selon del_val (pas del_sorval)
+#     # ========================================
+#     df["sej_classe"] = "sansLL"
 
-    has_del_val = df["del_val"].notna()
+#     has_del_val = df["del_val"].notna()
 
-    # Classification
-    df.loc[has_del_val & (df["del_val"] == 0), "sej_classe"] = "0j"
-    df.loc[has_del_val & (df["del_val"] > 0), "sej_classe"] = "1j+"
+#     # Classification
+#     df.loc[has_del_val & (df["del_val"] == 0), "sej_classe"] = "0j"
+#     df.loc[has_del_val & (df["del_val"] > 0), "sej_classe"] = "1j+"
 
-    print(f"\n📊 Classification finale :")
-    for classe in ["0j", "1j+", "sansLL"]:
-        count = (df["sej_classe"] == classe).sum()
-        pct = count / len(df) * 100 if len(df) > 0 else 0
-        print(f"   - {classe}: {count} ({pct:.1f}%)")
+#     print(f"\n📊 Classification finale :")
+#     for classe in ["0j", "1j+", "sansLL"]:
+#         count = (df["sej_classe"] == classe).sum()
+#         pct = count / len(df) * 100 if len(df) > 0 else 0
+#         print(f"   - {classe}: {count} ({pct:.1f}%)")
 
-    return df
+#     return df
 
 
 def calculate_validation_stats(df: pd.DataFrame, matrice_path: str = None) -> Dict:
@@ -511,7 +627,7 @@ def calculate_validation_stats(df: pd.DataFrame, matrice_path: str = None) -> Di
     print(f"\n📊 Calcul des statistiques de VALIDATION...")
 
     # Classifier les séjours
-    df = classify_sejours_iql(df, matrice_path)
+    # df = classify_sejours_iql(df, matrice_path)
 
     # Statistiques globales
     total_sejours_all = len(df)
@@ -531,8 +647,8 @@ def calculate_validation_stats(df: pd.DataFrame, matrice_path: str = None) -> Di
     # Statistiques par spécialité
     stats_par_spe = []
 
-    for spe in df["sej_spe_final"].dropna().unique():
-        df_spe = df[df["sej_spe_final"] == spe]
+    for spe in df["sej_spe"].dropna().unique():
+        df_spe = df[df["sej_spe"] == spe]
         total_sejours = len(df_spe)
 
         # =================TABLEAU GAELLE SUR VALIDATION==================
@@ -606,7 +722,7 @@ def calculate_diffusion_stats(df: pd.DataFrame, matrice_path: str = None) -> Dic
     print(f"\n📊 Calcul des statistiques de DIFFUSION...")
 
     # Classifier les séjours
-    df = classify_sejours_iql(df, matrice_path)
+    # df = classify_sejours_iql(df, matrice_path)
 
     # Statistiques globales
     total_sejours_all = len(df)
@@ -646,9 +762,9 @@ def calculate_diffusion_stats(df: pd.DataFrame, matrice_path: str = None) -> Dic
     # Statistiques par spécialité
     stats_par_spe = []
 
-    for spe in df["sej_spe_final"].dropna().unique():
-        df_spe = df[df["sej_spe_final"] == spe]
-        df_spe_dates = df_with_dates[df_with_dates["sej_spe_final"] == spe]
+    for spe in df["sej_spe"].dropna().unique():
+        df_spe = df[df["sej_spe"] == spe]
+        df_spe_dates = df_with_dates[df_with_dates["sej_spe"] == spe]
         total_sejours = len(df_spe)
 
         # =================TABLEAU GAELLE SUR DIFFUSION==================
