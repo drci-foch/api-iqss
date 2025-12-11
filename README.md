@@ -89,7 +89,6 @@ api-iqss/
 │   ├── generate_files.py    # Report orchestration
 │   └── static/index.html    # Web interface
 ├── data/db/                  # Specialty mapping matrix
-├── doc/                      # Documentation
 ├── Dockerfile
 └── requirements.txt
 ```
