@@ -3,7 +3,7 @@ Module de connexion aux bases de données GAM et ESL
 """
 
 import pandas as pd
-from typing import Optional, List
+from typing import Optional
 from config import settings
 import re
 import pytds

@@ -2,9 +2,7 @@
 Configuration de l'application
 """
 
-import os
 from pydantic_settings import BaseSettings
-from typing import Optional
 from pathlib import Path
 
 # Définir les chemins de base

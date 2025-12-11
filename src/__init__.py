@@ -4,11 +4,10 @@ Version 2.0 - Avec plusieurs slides et tableaux améliorés
 """
 
 from pptx import Presentation
-from pptx.util import Inches, Pt, Cm
+from pptx.util import Inches, Pt
 from pptx.enum.text import PP_ALIGN, PP_PARAGRAPH_ALIGNMENT
 from pptx.dml.color import RGBColor
-from datetime import datetime
-from typing import Dict, List
+from typing import Dict
 import pandas as pd
 
 # Couleurs du thème Hôpital Foch

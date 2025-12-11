@@ -8,11 +8,10 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
-from openpyxl.chart import PieChart, BarChart, LineChart, Reference
+from openpyxl.chart import PieChart, BarChart, Reference
 from openpyxl.chart.series import DataPoint
 from openpyxl.chart.label import DataLabelList
-from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from io import BytesIO
 
 # --------------------------------------------------------------------
@@ -560,11 +559,8 @@ def create_sheet_dataframe_analysis(wb: Workbook, df: pd.DataFrame, period: str)
 
         for row_idx in range(4, ws.max_row + 1):
             cell = ws.cell(row=row_idx, column=col_idx)
-            try:
-                if cell.value:
-                    max_length = max(max_length, len(str(cell.value)))
-            except:
-                pass
+            if cell.value:
+                max_length = max(max_length, len(str(cell.value)))
 
         adjusted_width = min(max(max_length + 2, 12), 50)
         ws.column_dimensions[column_letter].width = adjusted_width

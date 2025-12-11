@@ -1,13 +1,10 @@
 import pandas as pd
-from datetime import datetime, timedelta
 from config import settings
 from typing import Dict, List, Optional, Tuple
-import numpy as np
-import unicodedata
+
 from database import get_sejours_data, get_documents_data
 from data_processing import (
     merge_sejours_documents,
-    # classify_sejours_iql,
     calculate_validation_stats,
     calculate_diffusion_stats,
 )
