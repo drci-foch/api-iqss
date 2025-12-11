@@ -57,8 +57,6 @@ async def generate_report_by_date(request: ReportRequest):
     Génère un rapport d'indicateurs de lettres de liaison pour une période donnée
     """
     try:
-        print(f"📅 Génération du rapport du {request.start_date} au {request.end_date}")
-
         # Validation des dates
         try:
             start = datetime.strptime(request.start_date, "%Y-%m-%d")
@@ -94,16 +92,15 @@ async def generate_report_by_date(request: ReportRequest):
 
         # Génération du fichier Excel en mémoire
         try:
-            print("📊 Génération du fichier Excel en mémoire...")
             excel_bytes = generate_excel(
                 stats_validation,
                 stats_diffusion,
                 period,
                 df_analysis=data,  # Ajouter le DataFrame
             )
-            print("✅ Excel généré en mémoire")
+
         except Exception as excel_error:
-            print(f"❌ Erreur génération Excel : {excel_error}")
+            print(f"Erreur génération Excel : {excel_error}")
             traceback.print_exc()
             raise HTTPException(
                 status_code=500,
@@ -120,7 +117,6 @@ async def generate_report_by_date(request: ReportRequest):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ ERREUR DÉTAILLÉE dans generate_report_by_date:")
         print(traceback.format_exc())
         raise HTTPException(
             status_code=500, detail=f"Erreur lors de la génération du rapport: {str(e)}"
@@ -139,8 +135,6 @@ async def generate_report_by_sejours(request: ReportBySejoursRequest):
                 detail="Aucun numéro de séjour fourni. Veuillez fournir au moins un numéro de séjour.",
             )
 
-        print(f"🛎️ Génération du rapport pour {len(request.sejour_ids)} séjours")
-
         data, stats_validation, stats_diffusion = generate_report_data(
             start_date=None,
             end_date=None,
@@ -153,15 +147,12 @@ async def generate_report_by_sejours(request: ReportBySejoursRequest):
                 detail=f"Aucune donnée trouvée pour les {len(request.sejour_ids)} séjours demandés",
             )
 
-        print(f"✅ {len(data)} lignes de données générées")
-
         # Nom de fichier pour le téléchargement
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         nb_sejours = len(request.sejour_ids)
         excel_filename = f"LL_Rapport_{nb_sejours}_sejours_{timestamp}.xlsx"
 
         # Génération du fichier Excel en mémoire
-        print("📊 Génération du fichier Excel en mémoire...")
         try:
             excel_bytes = generate_excel(
                 stats_validation=stats_validation,
@@ -187,7 +178,7 @@ async def generate_report_by_sejours(request: ReportBySejoursRequest):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ ERREUR dans generate_report_by_sejours:")
+        print("ERREUR dans generate_report_by_sejours:")
         traceback.print_exc()
         raise HTTPException(
             status_code=500, detail=f"Erreur lors de la génération du rapport: {str(e)}"

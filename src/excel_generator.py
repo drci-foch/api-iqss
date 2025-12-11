@@ -577,10 +577,6 @@ def create_sheet_dataframe_analysis(wb: Workbook, df: pd.DataFrame, period: str)
     # Figer les volets
     ws.freeze_panes = "A5"
 
-    print(
-        f"   ↳ Feuille 'Données d'analyse' créée : {len(df)} lignes × {len(df.columns)} colonnes"
-    )
-
 
 # --------------------------------------------------------------------
 #  NOUVELLE FEUILLE : GRAPHIQUES
@@ -827,8 +823,6 @@ def create_sheet_graphiques(
     ws.column_dimensions["C"].width = 12
     ws.column_dimensions["D"].width = 12
 
-    print(f"   ↳ Feuille 'Graphiques' créée avec 3 graphiques")
-
 
 # --------------------------------------------------------------------
 #  GENERATION DE L'EXCEL
@@ -864,10 +858,6 @@ def generate_excel(
     buffer = BytesIO()
     wb.save(buffer)
     buffer.seek(0)
-
-    print(
-        f"✅ Excel généré en mémoire ({len(wb.sheetnames)} feuilles | Formatage harmonisé | Graphiques inclus)"
-    )
 
     return buffer.getvalue()
 
@@ -1014,5 +1004,3 @@ if __name__ == "__main__":
     # Sauvegarder pour test
     with open("test_output_with_charts.xlsx", "wb") as f:
         f.write(excel_bytes)
-
-    print("\n✅ Test terminé ! Fichier sauvegardé : test_output_with_charts.xlsx")

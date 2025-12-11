@@ -32,7 +32,7 @@ class DatabaseConnector:
                 )
 
             except Exception as e:
-                print(f"❌ Erreur connexion GAM: {e}")
+                print(f"Erreur connexion GAM: {e}")
                 raise
         return self._conn_gam
 
@@ -48,9 +48,8 @@ class DatabaseConnector:
                     password=settings.ESL_PASSWORD,
                     autocommit=True,
                 )
-                print("✅ Connexion EASILY (SQL Server) réussie")
             except Exception as e:
-                print(f"❌ Erreur connexion EASILY: {e}")
+                print(f"Erreur connexion EASILY: {e}")
                 raise
         return self._conn_esl
 
@@ -134,10 +133,6 @@ def get_sejours_data(
         if filters:
             base_query += " AND " + " AND ".join(filters)
 
-        print("📊 Requête SQL séjours:")
-        print(base_query)
-        print()
-
         cursor.execute(base_query)
 
         # Récupération des noms de colonnes
@@ -147,14 +142,12 @@ def get_sejours_data(
         data = cursor.fetchall()
         df = pd.DataFrame(data, columns=columns)
 
-        print(f"✅ Séjours récupérés : {len(df)} lignes")
-
         # Vérification que les colonnes existent avant de les manipuler
         if "pat_ipp" in df.columns:
             df["pat_ipp"] = df["pat_ipp"].apply(clean_ipp)
         else:
             print(
-                f"⚠️ Colonne 'pat_ipp' introuvable. Colonnes disponibles: {df.columns.tolist()}"
+                f"Colonne 'pat_ipp' introuvable. Colonnes disponibles: {df.columns.tolist()}"
             )
             raise KeyError(
                 "La colonne 'pat_ipp' n'a pas été trouvée dans les résultats de la requête"
@@ -164,12 +157,12 @@ def get_sejours_data(
         if "uf_sortie" in df.columns:
             df["sej_uf"] = df["uf_sortie"].str[:3]
         else:
-            print("⚠️ Colonne 'uf_sortie' introuvable")
+            print("Colonne 'uf_sortie' introuvable")
 
         return df
 
     except Exception as e:
-        print(f"❌ Erreur dans get_sejours_data: {e}")
+        print(f"Erreur dans get_sejours_data: {e}")
         import traceback
 
         traceback.print_exc()
@@ -263,7 +256,7 @@ def get_documents_data(
         return df
 
     except Exception as e:
-        print(f"❌ Erreur dans get_documents_data: {e}")
+        print(f"Erreur dans get_documents_data: {e}")
         import traceback
 
         traceback.print_exc()

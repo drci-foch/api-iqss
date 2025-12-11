@@ -53,9 +53,8 @@ def export_requete_to_excel(
 
             data[cols_available].to_excel(writer, sheet_name="Donnees", index=False)
 
-        print(f"✅ Excel exporté : {output_path}")
     except Exception as e:
-        print(f"❌ Erreur lors de l'export Excel : {e}")
+        print(f"Erreur lors de l'export Excel : {e}")
         raise
 
 
@@ -84,9 +83,8 @@ def generate_report_data(
     # Si matrice_path n'est pas fourni, utiliser celui des settings
     if matrice_path is None:
         matrice_path = settings.MATRICE_PATH
-        print(f"📂 Utilisation du chemin par défaut: {matrice_path}")
     else:
-        print(f"📂 Utilisation du chemin fourni: {matrice_path}")
+        print(f"Utilisation du chemin fourni: {matrice_path}")
 
     # 1. Récupérer les données des séjours (GAM)
 
@@ -98,16 +96,6 @@ def generate_report_data(
     # 3. Fusionner les données
 
     data = merge_sejours_documents(sejours, documents)
-
-    # 4. Classifier les séjours selon IQL
-
-    # data = classify_sejours_iql(data, matrice_path)
-
-    # Afficher la répartition des classes
-    class_counts = data["sej_classe"].value_counts()
-
-    for classe, count in class_counts.items():
-        print(f"      - {classe}: {count} ({count / len(data) * 100:.1f}%)")
 
     # 5. Calculer les statistiques de validation
 

@@ -447,7 +447,6 @@ def generate_powerpoint(
 
     # Sauvegarder
     prs.save(output_path)
-    print(f"PowerPoint généré : {output_path}")
 
 
 if __name__ == "__main__":
