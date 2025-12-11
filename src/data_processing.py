@@ -428,9 +428,6 @@ def calculate_validation_stats(df: pd.DataFrame, matrice_path: str = None) -> Di
     if matrice_path is None:
         matrice_path = settings.MATRICE_PATH
 
-    # Classifier les séjours
-    # df = classify_sejours_iql(df, matrice_path)
-
     # Statistiques globales
     total_sejours_all = len(df)
 
@@ -461,15 +458,13 @@ def calculate_validation_stats(df: pd.DataFrame, matrice_path: str = None) -> Di
                 "specialite": str(spe),
                 "total_sejours": int(total_sejours),
                 "nb_sejours_valides": int(nb_ll_validees),
-                "pct_sejours_validees": float(
-                    pct_ll_validees
-                ),  # ✅ Convertir en float natif
+                "pct_sejours_validees": float(pct_ll_validees),
                 "taux_validation_j0_over_sejours": float(
                     taux_validation_J0_over_sejours
-                ),  # ✅ Convertir en float natif
+                ),
                 "delai_moyen_validation": float(delai_validation_moyenne)
                 if not pd.isna(delai_validation_moyenne)
-                else 0.0,  # ✅ Gérer NaN
+                else 0.0,  #  Gérer NaN
             }
         )
 
@@ -481,15 +476,13 @@ def calculate_validation_stats(df: pd.DataFrame, matrice_path: str = None) -> Di
     return {
         "total_sejours_all": int(total_sejours_all),
         "nb_sejours_valides_all": int(nb_ll_validees_all),
-        "pct_sejours_validees_all": float(
-            pct_ll_validees_all
-        ),  # ✅ Convertir en float natif
+        "pct_sejours_validees_all": float(pct_ll_validees_all),
         "taux_validation_j0_over_sejours_all": float(
             taux_validation_J0_over_sejours_all
-        ),  # ✅ Convertir en float natif
+        ),
         "delai_moyen_validation_all": float(delai_validation_moyenne_all)
         if not pd.isna(delai_validation_moyenne_all)
-        else 0.0,  # ✅ Gérer NaN
+        else 0.0,  #  Gérer NaN
         "par_specialite_all": stats_par_spe,
     }
 
@@ -577,15 +570,9 @@ def calculate_diffusion_stats(df: pd.DataFrame, matrice_path: str = None) -> Dic
                 "specialite": str(spe),
                 "total_sejours": int(total_sejours),
                 "nb_ll_diffusees": int(nb_LL_diffuses),
-                "pct_ll_diffusees_over_validees": float(
-                    pct_diffuses_sur_validees
-                ),  # ✅ Convertir en float natif
-                "pct_ll_diffusees_over_sejours": float(
-                    pct_diffuses_sur_sejours
-                ),  # ✅ Convertir en float natif
-                "taux_diffusion_J0_validation": float(
-                    tx_diffusion_a_J0_validation
-                ),  # ✅ Convertir en float natif
+                "pct_ll_diffusees_over_validees": float(pct_diffuses_sur_validees),
+                "pct_ll_diffusees_over_sejours": float(pct_diffuses_sur_sejours),
+                "taux_diffusion_J0_validation": float(tx_diffusion_a_J0_validation),
                 "delai_diffusion_validation": float(delai_diffusion_validation)
                 if not pd.isna(delai_diffusion_validation)
                 else 0.0,
@@ -599,15 +586,9 @@ def calculate_diffusion_stats(df: pd.DataFrame, matrice_path: str = None) -> Dic
 
     return {
         "nb_ll_diffusees_all": int(nb_LL_diffuses_all),
-        "pct_ll_diffusees_over_validees_all": float(
-            pct_diffuses_sur_validees_all
-        ),  # ✅ Convertir en float natif
-        "pct_ll_diffusees_over_sejours_all": float(
-            pct_diffuses_sur_sejours_all
-        ),  # ✅ Convertir en float natif
-        "taux_diffusion_J0_validation_all": float(
-            tx_diffusion_a_J0_validation_all
-        ),  # ✅ Convertir en float natif
+        "pct_ll_diffusees_over_validees_all": float(pct_diffuses_sur_validees_all),
+        "pct_ll_diffusees_over_sejours_all": float(pct_diffuses_sur_sejours_all),
+        "taux_diffusion_J0_validation_all": float(tx_diffusion_a_J0_validation_all),
         "delai_diffusion_validation_all": float(delai_diffusion_validation_all)
         if not pd.isna(delai_diffusion_validation_all)
         else 0.0,
