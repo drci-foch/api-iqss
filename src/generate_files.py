@@ -10,51 +10,6 @@ from data_processing import (
 )
 
 
-def export_requete_to_excel(
-    data: pd.DataFrame, stats_validation: Dict, stats_diffusion: Dict, output_path: str
-) -> None:
-    """
-    Exporte les données et statistiques vers Excel avec plusieurs feuilles
-
-    Args:
-        data: DataFrame avec toutes les données des séjours
-        stats_validation: Dictionnaire des statistiques de validation
-        stats_diffusion: Dictionnaire des statistiques de diffusion
-        output_path: Chemin du fichier Excel de sortie
-    """
-    try:
-        with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
-            # Feuille 1: Données détaillées
-            # Sélectionner les colonnes les plus pertinentes
-            cols_to_export = [
-                "pat_ipp",
-                "sej_id",
-                "sej_ent",
-                "sej_sor",
-                "sej_uf",
-                "doc_id",
-                "doc_spe",
-                "doc_libelle",
-                "doc_val",
-                "del_sorval",
-                "date_diffusion",
-                "sej_classe",
-            ]
-
-            # Ajouter sej_spe_final si elle existe
-            if "sej_spe_final" in data.columns:
-                cols_to_export.append("sej_spe_final")
-
-            # Filtrer les colonnes qui existent réellement
-            cols_available = [col for col in cols_to_export if col in data.columns]
-
-            data[cols_available].to_excel(writer, sheet_name="Donnees", index=False)
-
-    except Exception as e:
-        print(f"Erreur lors de l'export Excel : {e}")
-        raise
-
-
 def generate_report_data(
     start_date: Optional[List[str]] = None,
     end_date: Optional[List[str]] = None,
