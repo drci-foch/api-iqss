@@ -101,15 +101,14 @@ docker run --env-file .env -p 8080:8080 api-iqss
 ```
 
 ## Deploying in production
-
-# Export the image locally:
+### 1. Export the image locally:
 
 ```bash
 docker save api-iqss:latest -o api-iqss.tar
 ```
-# Transfer the tar file to your production server (via scp, sftp, etc.)
+### 2. Transfer the tar file to your production server (via scp, sftp, etc.)
 
-# Load and run on production:
+### 3. Load and run on production:
 ```bash
 docker load -i api-iqss.tar
 docker run -d --env-file .env -p 8080:8080 --restart unless-stopped api-iqss:latest
