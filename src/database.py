@@ -138,7 +138,7 @@ def get_sejours_data(
         # Récupération des noms de colonnes
         columns = [
             desc[0].lower() for desc in cursor.description
-        ]  # ✅ Conversion en minuscules
+        ]  # Conversion en minuscules
         data = cursor.fetchall()
         df = pd.DataFrame(data, columns=columns)
 

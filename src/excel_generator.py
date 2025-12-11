@@ -97,7 +97,10 @@ def set_column_widths(ws, widths):
 
 
 def create_sheet_resume(
-    wb: Workbook, stats_validation: Dict, stats_diffusion: Dict, period: str
+    wb: Workbook,
+    stats_validation: Dict,
+    period: str,
+    stats_diffusion: Optional[Dict] = None,
 ):
     """Feuille 1 : Résumé global"""
     ws = wb.create_sheet("Résumé Global", 0)
@@ -162,20 +165,24 @@ def create_sheet_resume(
                 stats_validation["taux_validation_j0_over_sejours_all"], 90, 80, 70
             ),
         ),
-        # (
-        #     "Taux diffusion / validation",
-        #     f"{stats_diffusion['pct_ll_diffusees_over_validees_all']:.1f}%",
-        #     "≥ 90%",
-        #     "✅"
-        #     if stats_diffusion["pct_ll_diffusees_over_validees_all"] >= 90
-        #     else "⚠️"
-        #     if stats_diffusion["pct_ll_diffusees_over_validees_all"] >= 80
-        #     else "❌",
-        #     get_color_by_threshold(
-        #         stats_diffusion["pct_ll_diffusees_over_validees_all"], 90, 80, 70
-        #     ),
-        # ),
     ]
+
+    if stats_diffusion:
+        data_rows += [
+            (
+                "Taux diffusion / validation",
+                f"{stats_diffusion['pct_ll_diffusees_over_validees_all']:.1f}%",
+                "≥ 90%",
+                "✅"
+                if stats_diffusion["pct_ll_diffusees_over_validees_all"] >= 90
+                else "⚠️"
+                if stats_diffusion["pct_ll_diffusees_over_validees_all"] >= 80
+                else "❌",
+                get_color_by_threshold(
+                    stats_diffusion["pct_ll_diffusees_over_validees_all"], 90, 80, 70
+                ),
+            ),
+        ]
 
     for row_idx, (indicator, value, objective, status, color) in enumerate(
         data_rows, start=5
@@ -285,7 +292,10 @@ def create_sheet_resume(
 
 
 def create_sheet_validation_detail(
-    wb: Workbook, stats_validation: Dict, stats_diffusion: Dict, period: str
+    wb: Workbook,
+    stats_validation: Dict,
+    period: str,
+    stats_diffusion: Optional[Dict] = None,
 ):
     """Feuille 2 : Tableau détaillé par spécialité"""
     ws = wb.create_sheet("Détail par Spécialité")
@@ -321,12 +331,11 @@ def create_sheet_validation_detail(
 
     # Données par spécialité
     specialites_validation = stats_validation.get("par_specialite_all", [])
-    # specialites_diffusion = stats_diffusion.get("par_specialite", [])
-    # diffusion_dict = {spe["specialite"]: spe for spe in specialites_diffusion}
+    if stats_diffusion:
+        specialites_diffusion = stats_diffusion.get("par_specialite", [])
+        diffusion_dict = {spe["specialite"]: spe for spe in specialites_diffusion}
 
     for row_idx, spe in enumerate(specialites_validation, start=3):
-        # spe_diff = diffusion_dict.get(spe["specialite"], {})
-
         # Couleur de ligne alternée
         bg_color = COLOR_WHITE if row_idx % 2 == 1 else "F2F2F2"
 
@@ -367,39 +376,42 @@ def create_sheet_validation_detail(
         cell = ws.cell(row=row_idx, column=6, value=f"{delai_val:.1f}")
         apply_cell_style(cell, bg_color=bg_color)
 
-        # # LL diff.
-        # nb_diff = spe_diff.get("nb_ll_diffusees", 0)
-        # cell = ws.cell(row=row_idx, column=7, value=nb_diff)
-        # apply_cell_style(cell, bg_color=bg_color)
+        if stats_diffusion:
+            spe_diff = diffusion_dict.get(spe["specialite"], {})
+            # LL diff.
+            nb_diff = spe_diff.get("nb_ll_diffusees", 0)
+            cell = ws.cell(row=row_idx, column=7, value=nb_diff)
+            apply_cell_style(cell, bg_color=bg_color)
 
-        # # % diff.
-        # pct_diff = spe_diff.get("pct_ll_diffusees_over_validees", 0)
-        # cell = ws.cell(row=row_idx, column=8, value=f"{pct_diff:.1f}%")
-        # color_diff = get_color_by_threshold(pct_diff, 90, 75, 60)
-        # apply_cell_style(cell, bg_color=color_diff)
+            # % diff.
+            pct_diff = spe_diff.get("pct_ll_diffusees_over_validees", 0)
+            cell = ws.cell(row=row_idx, column=8, value=f"{pct_diff:.1f}%")
+            color_diff = get_color_by_threshold(pct_diff, 90, 75, 60)
+            apply_cell_style(cell, bg_color=color_diff)
 
-        # # % des séjours
-        # pct_diff_sejours = spe_diff.get("pct_ll_diffusees_over_sejours", 0)
-        # cell = ws.cell(row=row_idx, column=9, value=f"{pct_diff_sejours:.1f}%")
-        # color_diff_global = get_color_by_threshold(pct_diff_sejours, 90, 75, 60)
-        # apply_cell_style(cell, bold=True, bg_color=color_diff_global)
+            # % des séjours
+            pct_diff_sejours = spe_diff.get("pct_ll_diffusees_over_sejours", 0)
+            cell = ws.cell(row=row_idx, column=9, value=f"{pct_diff_sejours:.1f}%")
+            color_diff_global = get_color_by_threshold(pct_diff_sejours, 90, 75, 60)
+            apply_cell_style(cell, bold=True, bg_color=color_diff_global)
 
-        # # Taux de diffusion à J0 de la validation
-        # pct_diff_validation = spe_diff.get("taux_diffusion_J0_validation", 0)
-        # cell = ws.cell(row=row_idx, column=10, value=f"{pct_diff_validation:.1f}%")
-        # color_diff_global = get_color_by_threshold(pct_diff_validation, 90, 75, 60)
-        # apply_cell_style(cell, bold=True, bg_color=color_diff_global)
+            # Taux de diffusion à J0 de la validation
+            pct_diff_validation = spe_diff.get("taux_diffusion_J0_validation", 0)
+            cell = ws.cell(row=row_idx, column=10, value=f"{pct_diff_validation:.1f}%")
+            color_diff_global = get_color_by_threshold(pct_diff_validation, 90, 75, 60)
+            apply_cell_style(cell, bold=True, bg_color=color_diff_global)
 
-        # # Délai diff. / validation
-        # delai_diff_validation = spe_diff.get("delai_diffusion_validation", 0)
-        # if delai_diff_validation is None or (
-        #     isinstance(delai_diff_validation, float) and pd.isna(delai_diff_validation)
-        # ):
-        #     delai_diff_validation = 0
-        # cell = ws.cell(row=row_idx, column=11, value=f"{delai_diff_validation:.1f}")
-        # apply_cell_style(
-        #     cell, bold=True, font_color=COLOR_WHITE, bg_color=FOCH_DARK_BLUE
-        # )
+            # Délai diff. / validation
+            delai_diff_validation = spe_diff.get("delai_diffusion_validation", 0)
+            if delai_diff_validation is None or (
+                isinstance(delai_diff_validation, float)
+                and pd.isna(delai_diff_validation)
+            ):
+                delai_diff_validation = 0
+            cell = ws.cell(row=row_idx, column=11, value=f"{delai_diff_validation:.1f}")
+            apply_cell_style(
+                cell, bold=True, font_color=COLOR_WHITE, bg_color=FOCH_DARK_BLUE
+            )
 
     # Ligne TOTAL FOCH
     total_row = len(specialites_validation) + 3
@@ -450,55 +462,56 @@ def create_sheet_validation_detail(
     cell = ws.cell(row=total_row, column=6, value=f"{delai_global:.1f}")
     apply_cell_style(cell, bold=True, font_color=COLOR_WHITE, bg_color=FOCH_DARK_BLUE)
 
-    # # Nb LL diffusées
-    # total_diff = stats_diffusion.get("nb_ll_diffusees_all", 0)
-    # cell = ws.cell(row=total_row, column=7, value=f"{total_diff:,}".replace(",", " "))
-    # apply_cell_style(cell, bold=True, font_color=COLOR_WHITE, bg_color=FOCH_DARK_BLUE)
+    if stats_diffusion:
+        # Nb LL diffusées
+        total_diff = stats_diffusion.get("nb_ll_diffusees_all", 0)
+        cell = ws.cell(
+            row=total_row, column=7, value=f"{total_diff:,}".replace(",", " ")
+        )
+        apply_cell_style(
+            cell, bold=True, font_color=COLOR_WHITE, bg_color=FOCH_DARK_BLUE
+        )
 
-    # # % des validées
-    # pct_diff_global = stats_diffusion.get("pct_ll_diffusees_over_validees_all", 0)
-    # cell = ws.cell(row=total_row, column=8, value=f"{pct_diff_global:.1f}%")
-    # color_diff_global = get_color_by_threshold(pct_diff_global, 90, 75, 60)
-    # apply_cell_style(cell, bold=True, bg_color=color_diff_global)
+        # % des validées
+        pct_diff_global = stats_diffusion.get("pct_ll_diffusees_over_validees_all", 0)
+        cell = ws.cell(row=total_row, column=8, value=f"{pct_diff_global:.1f}%")
+        color_diff_global = get_color_by_threshold(pct_diff_global, 90, 75, 60)
+        apply_cell_style(cell, bold=True, bg_color=color_diff_global)
 
-    # # % des séjours
-    # pct_diff_global = stats_diffusion.get("pct_ll_diffusees_over_sejours_all", 0)
-    # cell = ws.cell(row=total_row, column=9, value=f"{pct_diff_global:.1f}%")
-    # color_diff_global = get_color_by_threshold(pct_diff_global, 90, 75, 60)
-    # apply_cell_style(cell, bold=True, bg_color=color_diff_global)
+        # % des séjours
+        pct_diff_global = stats_diffusion.get("pct_ll_diffusees_over_sejours_all", 0)
+        cell = ws.cell(row=total_row, column=9, value=f"{pct_diff_global:.1f}%")
+        color_diff_global = get_color_by_threshold(pct_diff_global, 90, 75, 60)
+        apply_cell_style(cell, bold=True, bg_color=color_diff_global)
 
-    # # Taux de diffusion à J0 de la validation
-    # pct_diff_global = stats_diffusion.get("taux_diffusion_J0_validation_all", 0)
-    # cell = ws.cell(row=total_row, column=10, value=f"{pct_diff_global:.1f}%")
-    # color_diff_global = get_color_by_threshold(pct_diff_global, 90, 75, 60)
-    # apply_cell_style(cell, bold=True, bg_color=color_diff_global)
+        # Taux de diffusion à J0 de la validation
+        pct_diff_global = stats_diffusion.get("taux_diffusion_J0_validation_all", 0)
+        cell = ws.cell(row=total_row, column=10, value=f"{pct_diff_global:.1f}%")
+        color_diff_global = get_color_by_threshold(pct_diff_global, 90, 75, 60)
+        apply_cell_style(cell, bold=True, bg_color=color_diff_global)
 
-    # # Délai diff. / validation
-    # delai_diff_global = stats_diffusion.get("delai_diffusion_validation_all", 0)
-    # if delai_diff_global is None or (
-    #     isinstance(delai_diff_global, float) and pd.isna(delai_diff_global)
-    # ):
-    #     delai_diff_global = 0
-    # cell = ws.cell(row=total_row, column=11, value=f"{delai_diff_global:.1f}")
-    # apply_cell_style(cell, bold=True, font_color=COLOR_WHITE, bg_color=FOCH_DARK_BLUE)
+        # Délai diff. / validation
+        delai_diff_global = stats_diffusion.get("delai_diffusion_validation_all", 0)
+        if delai_diff_global is None or (
+            isinstance(delai_diff_global, float) and pd.isna(delai_diff_global)
+        ):
+            delai_diff_global = 0
+        cell = ws.cell(row=total_row, column=11, value=f"{delai_diff_global:.1f}")
+        apply_cell_style(
+            cell, bold=True, font_color=COLOR_WHITE, bg_color=FOCH_DARK_BLUE
+        )
 
     # Largeurs de colonnes
-    set_column_widths(
-        ws,
-        [
-            25,
-            10,
-            10,
-            10,
-            10,
-            12,
-            #    10,
-            #    10,
-            #    10,
-            #    10,
-            #    12
-        ],
-    )
+    if stats_diffusion:
+        set_column_widths(
+            ws,
+            [25, 10, 10, 10, 10, 12, 10, 10, 10, 10, 12],
+        )
+    else:
+        set_column_widths(
+            ws,
+            [25, 10, 10, 10, 10, 12],
+        )
 
     # Hauteur des lignes
     ws.row_dimensions[1].height = 30
@@ -582,8 +595,7 @@ def create_sheet_dataframe_analysis(wb: Workbook, df: pd.DataFrame, period: str)
 def create_sheet_graphiques(
     wb: Workbook,
     stats_validation: Dict,
-    stats_diffusion: Dict,
-    df_analysis: Optional[pd.DataFrame],
+    df_analysis: pd.DataFrame,
     period: str,
 ):
     """
@@ -827,8 +839,8 @@ def create_sheet_graphiques(
 
 def generate_excel(
     stats_validation: Dict,
-    stats_diffusion: Dict,
     period: str,
+    stats_diffusion: Optional[Dict] = None,
     df_analysis: Optional[pd.DataFrame] = None,
 ) -> bytes:
     """Générer le fichier Excel avec toutes les feuilles et le retourner en mémoire"""
@@ -840,15 +852,15 @@ def generate_excel(
         wb.remove(wb["Sheet"])
 
     # Créer les feuilles
-    create_sheet_resume(wb, stats_validation, stats_diffusion, period)
-    create_sheet_validation_detail(wb, stats_validation, stats_diffusion, period)
+    create_sheet_resume(wb, stats_validation, period, stats_diffusion)
+    create_sheet_validation_detail(wb, stats_validation, period, stats_diffusion)
 
     # Ajouter la feuille DataFrame si fournie
     if df_analysis is not None and not df_analysis.empty:
         create_sheet_dataframe_analysis(wb, df_analysis, period)
 
     # NOUVELLE FEUILLE : Graphiques
-    create_sheet_graphiques(wb, stats_validation, stats_diffusion, df_analysis, period)
+    create_sheet_graphiques(wb, stats_validation, df_analysis, period)
 
     # Sauvegarder dans un buffer en mémoire
     buffer = BytesIO()

@@ -6,7 +6,7 @@ from database import get_sejours_data, get_documents_data
 from data_processing import (
     merge_sejours_documents,
     calculate_validation_stats,
-    calculate_diffusion_stats,
+    # calculate_diffusion_stats,
 )
 
 
@@ -46,15 +46,14 @@ def generate_report_data(
     documents = get_documents_data(start_date, end_date)
 
     # 3. Fusionner les données
-
     data = merge_sejours_documents(sejours, documents)
 
-    # 5. Calculer les statistiques de validation
+    # 4. Calculer les statistiques de validation
 
     stats_validation = calculate_validation_stats(data, matrice_path=matrice_path)
 
-    # 6. Calculer les statistiques de diffusion
+    # 5. Calculer les statistiques de diffusion
 
-    stats_diffusion = calculate_diffusion_stats(data, matrice_path=matrice_path)
+    # stats_diffusion = calculate_diffusion_stats(data, matrice_path=matrice_path)
 
-    return data, stats_validation, stats_diffusion
+    return data, stats_validation  # , stats_diffusion

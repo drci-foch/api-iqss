@@ -70,7 +70,8 @@ async def generate_report_by_date(request: ReportRequest):
             )
 
         # Génération du rapport (données)
-        data, stats_validation, stats_diffusion = generate_report_data(
+        # data, stats_validation, stats_diffusion
+        data, stats_validation = generate_report_data(
             start_date=request.start_date,
             end_date=request.end_date,
             sejour_list=request.sejour_list,
@@ -90,9 +91,9 @@ async def generate_report_by_date(request: ReportRequest):
         # Génération du fichier Excel en mémoire
         try:
             excel_bytes = generate_excel(
-                stats_validation,
-                stats_diffusion,
-                period,
+                stats_validation=stats_validation,
+                # stats_diffusion,
+                period=period,
                 df_analysis=data,  # Ajouter le DataFrame
             )
 
@@ -132,7 +133,8 @@ async def generate_report_by_sejours(request: ReportBySejoursRequest):
                 detail="Aucun numéro de séjour fourni. Veuillez fournir au moins un numéro de séjour.",
             )
 
-        data, stats_validation, stats_diffusion = generate_report_data(
+        # data, stats_validation, stats_diffusion
+        data, stats_validation = generate_report_data(
             start_date=None,
             end_date=None,
             sejour_list=request.sejour_ids,
@@ -153,13 +155,12 @@ async def generate_report_by_sejours(request: ReportBySejoursRequest):
         try:
             excel_bytes = generate_excel(
                 stats_validation=stats_validation,
-                stats_diffusion=stats_diffusion,
+                # stats_diffusion=stats_diffusion,
                 period=f"{nb_sejours} séjours sélectionnés",
                 df_analysis=data,
             )
-            print("✅ Excel généré en mémoire")
         except Exception as excel_error:
-            print(f"❌ Erreur génération Excel : {excel_error}")
+            print(f"Erreur génération Excel : {excel_error}")
             traceback.print_exc()
             raise HTTPException(
                 status_code=500,
