@@ -314,8 +314,12 @@ def create_sheet_validation_detail(
             cell, bold=True, font_color=FOCH_DARK_BLUE, bg_color=FOCH_LIGHT_BLUE
         )
 
-    # Données par spécialité
-    specialites_validation = stats_validation.get("par_specialite_all", [])
+    # Données par spécialité — triées par taux J0 décroissant, puis nb séjours décroissant
+    specialites_validation = sorted(
+        stats_validation.get("par_specialite_all", []),
+        key=lambda x: (x.get("taux_validation_j0_over_sejours", 0), x.get("total_sejours", 0)),
+        reverse=True,
+    )
     if stats_diffusion:
         specialites_diffusion = stats_diffusion.get("par_specialite", [])
         diffusion_dict = {spe["specialite"]: spe for spe in specialites_diffusion}
