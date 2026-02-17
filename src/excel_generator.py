@@ -723,20 +723,13 @@ def create_sheet_graphiques(
         reverse=True,
     )
 
-    # Toutes les spécialités pour le tableau de données
+    # Toutes les spécialités
     specialites_display = specialites_sorted
     nb_spe = len(specialites_display)
 
-    # Top 15 meilleurs et Top 15 pires (sans doublon si < 30 spécialités)
-    top_best = specialites_sorted[:15]
-    top_worst = sorted(
-        specialites_sorted,
-        key=lambda x: x.get("taux_validation_j0_over_sejours", 0),
-    )[:15]
-
-    # --- Écriture des données TOP 15 MEILLEURS (colonnes A-D) ---
+    # --- Écriture des données (colonnes A-D) ---
     row_start = 14
-    for i, spe in enumerate(top_best):
+    for i, spe in enumerate(specialites_display):
         row = row_start + i
         ws.cell(row=row, column=1, value=spe.get("specialite", ""))
         ws.cell(row=row, column=2, value=spe.get("total_sejours", 0))
@@ -752,109 +745,49 @@ def create_sheet_graphiques(
         apply_cell_style(ws.cell(row=row, column=3))
         apply_cell_style(ws.cell(row=row, column=4))
 
-    row_end_best = row_start + len(top_best) - 1
+    row_end = row_start + len(specialites_display) - 1
 
     # ================================================================
-    # GRAPHIQUE 1 : Top 15 meilleurs services (% J0)
+    # GRAPHIQUE BARRES HORIZONTALES : % Validation J0 par spécialité
     # ================================================================
 
-    bar_chart_best = BarChart()
-    bar_chart_best.type = "bar"  # Barres horizontales
-    bar_chart_best.style = 10
-    bar_chart_best.title = "Top 15 — Meilleurs services : % LL validées J0"
-    bar_chart_best.y_axis.title = "Service"
-    bar_chart_best.x_axis.title = "% LL validées J0"
-    bar_chart_best.x_axis.scaling.min = 0
-    bar_chart_best.x_axis.scaling.max = 100
+    bar_chart = BarChart()
+    bar_chart.type = "bar"  # Barres horizontales
+    bar_chart.style = 10
+    bar_chart.title = "% LL validées le jour de la sortie (J0) par service"
+    bar_chart.y_axis.title = "Service"
+    bar_chart.x_axis.title = "% LL validées J0"
+    bar_chart.x_axis.scaling.min = 0
+    bar_chart.x_axis.scaling.max = 100
 
-    data_ref_best = Reference(ws, min_col=4, min_row=13, max_row=row_end_best)
-    cats_ref_best = Reference(ws, min_col=1, min_row=14, max_row=row_end_best)
+    data_ref = Reference(ws, min_col=4, min_row=13, max_row=row_end)
+    cats_ref = Reference(ws, min_col=1, min_row=14, max_row=row_end)
 
-    bar_chart_best.add_data(data_ref_best, titles_from_data=True)
-    bar_chart_best.set_categories(cats_ref_best)
-    bar_chart_best.shape = 4
-    bar_chart_best.width = 22
-    bar_chart_best.height = 14
+    bar_chart.add_data(data_ref, titles_from_data=True)
+    bar_chart.set_categories(cats_ref)
+    bar_chart.shape = 4
 
-    # Couleur verte pour les meilleurs
-    bar_chart_best.series[0].graphicalProperties.solidFill = "92D050"
+    # Largeur généreuse + hauteur dynamique : 1 cm par spécialité, minimum 15
+    bar_chart.width = 24
+    bar_chart.height = max(15, nb_spe * 1.0)
 
-    ws.add_chart(bar_chart_best, "F12")
-
-    # --- Écriture des données TOP 15 PIRES (colonnes F-I, sous le graphique) ---
-    worst_section_row = row_end_best + 3
-
-    ws.cell(row=worst_section_row, column=1, value="Services les plus en difficulté")
-    apply_cell_style(
-        ws.cell(row=worst_section_row, column=1),
-        bold=True,
-        font_size=12,
-        bg_color=FOCH_LIGHT_BLUE,
+    # Réduire la taille de police des étiquettes d'axe Y pour éviter le chevauchement
+    bar_chart.y_axis.txPr = None  # reset
+    from openpyxl.chart.text import RichText
+    from openpyxl.drawing.text import Paragraph, ParagraphProperties, CharacterProperties, Font as DrawingFont
+    bar_chart.y_axis.txPr = RichText(
+        p=[Paragraph(
+            pPr=ParagraphProperties(
+                defRPr=CharacterProperties(sz=800)
+            ),
+            endParaRPr=CharacterProperties(sz=800),
+        )]
     )
-    ws.merge_cells(f"A{worst_section_row}:D{worst_section_row}")
 
-    # En-têtes pour les pires
-    worst_header_row = worst_section_row + 1
-    ws.cell(row=worst_header_row, column=1, value="Spécialité")
-    ws.cell(row=worst_header_row, column=2, value="Nb séjours")
-    ws.cell(row=worst_header_row, column=3, value="% validées")
-    ws.cell(row=worst_header_row, column=4, value="% J0")
-    for col in range(1, 5):
-        apply_cell_style(
-            ws.cell(row=worst_header_row, column=col),
-            bold=True,
-            bg_color=FOCH_DARK_BLUE,
-            font_color=COLOR_WHITE,
-        )
+    # Couleur bleue Foch pour les barres
+    bar_chart.series[0].graphicalProperties.solidFill = FOCH_BLUE
 
-    worst_data_start = worst_header_row + 1
-    for i, spe in enumerate(top_worst):
-        row = worst_data_start + i
-        ws.cell(row=row, column=1, value=spe.get("specialite", ""))
-        ws.cell(row=row, column=2, value=spe.get("total_sejours", 0))
-        ws.cell(row=row, column=3, value=round(spe.get("pct_sejours_validees", 0), 1))
-        ws.cell(
-            row=row,
-            column=4,
-            value=round(spe.get("taux_validation_j0_over_sejours", 0), 1),
-        )
-
-        apply_cell_style(ws.cell(row=row, column=1), alignment_h="left")
-        apply_cell_style(ws.cell(row=row, column=2))
-        apply_cell_style(ws.cell(row=row, column=3))
-        apply_cell_style(ws.cell(row=row, column=4))
-
-    row_end_worst = worst_data_start + len(top_worst) - 1
-
-    # ================================================================
-    # GRAPHIQUE 2 : Top 15 services les plus en difficulté (% J0)
-    # ================================================================
-
-    bar_chart_worst = BarChart()
-    bar_chart_worst.type = "bar"  # Barres horizontales
-    bar_chart_worst.style = 10
-    bar_chart_worst.title = "Top 15 — Services les plus en difficulté : % LL validées J0"
-    bar_chart_worst.y_axis.title = "Service"
-    bar_chart_worst.x_axis.title = "% LL validées J0"
-    bar_chart_worst.x_axis.scaling.min = 0
-    bar_chart_worst.x_axis.scaling.max = 100
-
-    data_ref_worst = Reference(ws, min_col=4, min_row=worst_header_row, max_row=row_end_worst)
-    cats_ref_worst = Reference(ws, min_col=1, min_row=worst_data_start, max_row=row_end_worst)
-
-    bar_chart_worst.add_data(data_ref_worst, titles_from_data=True)
-    bar_chart_worst.set_categories(cats_ref_worst)
-    bar_chart_worst.shape = 4
-    bar_chart_worst.width = 22
-    bar_chart_worst.height = 14
-
-    # Couleur orange/rouge pour les pires
-    bar_chart_worst.series[0].graphicalProperties.solidFill = COLOR_ORANGE
-
-    ws.add_chart(bar_chart_worst, f"F{worst_section_row}")
-
-    # row_end pour le reste des graphiques
-    row_end = row_end_worst
+    ws.add_chart(bar_chart, "F12")
 
     # ================================================================
     # GRAPHIQUE BARRES VERTICALES : Nb séjours par spécialité (Top 15 par volume)
