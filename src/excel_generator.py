@@ -8,7 +8,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
-from openpyxl.chart import PieChart, BarChart, Reference
+from openpyxl.chart import PieChart, BarChart, LineChart, Reference
 from openpyxl.chart.series import DataPoint
 from openpyxl.chart.label import DataLabelList
 from typing import Dict, Optional
@@ -239,21 +239,6 @@ def create_sheet_resume(
         ("      - ", "Patients décédés (séjours non soumis aux LL)"),
         ("      - ", "Chirurgie ambulatoire et Hôpitaux de jours"),
         ("      - ", "Anesthésie, ophtalmologie, radiologie, ORL 392A"),
-        ("", ""),
-        ("📤 ", "Principe des indicateurs de diffusions (envois) :"),
-        (
-            "      - ",
-            "Seuls les séjours avec lettre de liaison validée par le médecin sont pris en compte",
-        ),
-        ("      - ", "En excluant :"),
-        (
-            "            • ",
-            "Les LL validées les samedis, dimanche et jours fériés (jours d'absence des secrétaires)",
-        ),
-        (
-            "            • ",
-            "Les LL avec plusieurs versions, dont la dernière version est validée à partir de J+1 après la sortie (date de diffusion des versions antérieures non sauvegardées)",
-        ),
     ]
 
     current_row = 12
@@ -649,7 +634,7 @@ def create_sheet_graphiques(
     # ================================================================
     # DONNÉES POUR CAMEMBERT (colonnes A-C, lignes 3-6)
     # ================================================================
-    ws["A3"] = "Répartition des séjours"
+    ws["A3"] = "Répartition des délais de validation par rapport au jour de sortie des LL des séjours de 1 nuit et plus"
     apply_cell_style(ws["A3"], bold=True, font_size=12, bg_color=FOCH_LIGHT_BLUE)
     ws.merge_cells("A3:C3")
 
@@ -679,7 +664,7 @@ def create_sheet_graphiques(
 
     # Créer le camembert
     pie_chart = PieChart()
-    pie_chart.title = "Répartition des séjours"
+    pie_chart.title = "Répartition des délais de validation par rapport au jour de sortie des LL des séjours de 1 nuit et plus"
 
     # Références aux données
     labels = Reference(ws, min_col=1, min_row=5, max_row=7)
@@ -693,7 +678,7 @@ def create_sheet_graphiques(
     pie_chart.height = 8
 
     # Couleurs personnalisées (vert olive, orange clair, gris)
-    colors = ["92D050", "FFC000", "A6A6A6"]
+    colors = ["92D050", "FFC000", "FF0000"]
     for i, color in enumerate(colors):
         pt = DataPoint(idx=i)
         pt.graphicalProperties.solidFill = color
@@ -734,8 +719,8 @@ def create_sheet_graphiques(
         reverse=True,
     )
 
-    # Limiter à 15 spécialités pour la lisibilité
-    specialites_display = specialites_sorted[:15]
+    # Afficher toutes les spécialités
+    specialites_display = specialites_sorted
 
     row_start = 14
     for i, spe in enumerate(specialites_display):
@@ -767,6 +752,10 @@ def create_sheet_graphiques(
     bar_chart.y_axis.title = "Service"
     bar_chart.x_axis.title = "% LL validées J0"
 
+    # Fixer l'axe X de 0 à 100% pour que tous les services soient visibles
+    bar_chart.x_axis.scaling.min = 0
+    bar_chart.x_axis.scaling.max = 100
+
     # Références aux données (colonne D = % J0)
     data_ref = Reference(ws, min_col=4, min_row=13, max_row=row_end)
     cats_ref = Reference(ws, min_col=1, min_row=14, max_row=row_end)
@@ -775,8 +764,10 @@ def create_sheet_graphiques(
     bar_chart.set_categories(cats_ref)
     bar_chart.shape = 4
 
-    bar_chart.width = 18
-    bar_chart.height = 12
+    bar_chart.width = 22
+    # Hauteur dynamique : 0.6 cm par spécialité, minimum 12
+    nb_spe = len(specialites_display)
+    bar_chart.height = max(12, nb_spe * 0.6)
 
     # Couleur verte pour les barres
     bar_chart.series[0].graphicalProperties.solidFill = "92D050"
@@ -813,8 +804,9 @@ def create_sheet_graphiques(
     bar_chart2.add_data(data_ref2, titles_from_data=True)
     bar_chart2.set_categories(cats_ref2)
 
-    bar_chart2.width = 18
-    bar_chart2.height = 10
+    bar_chart2.width = 22
+    # Hauteur adaptée au nombre de spécialités
+    bar_chart2.height = max(10, nb_spe * 0.4)
 
     # Couleur bleue Foch pour les barres
     bar_chart2.series[0].graphicalProperties.solidFill = FOCH_BLUE
@@ -822,14 +814,117 @@ def create_sheet_graphiques(
     ws.add_chart(bar_chart2, f"F{bar_row}")
 
     # ================================================================
+    # GRAPHIQUE 4 : ÉVOLUTION MENSUELLE (si période > 2 mois)
+    # ================================================================
+
+    if df_analysis is not None and "sej_sor" in df_analysis.columns:
+        df_monthly = df_analysis.copy()
+        df_monthly["sej_sor"] = pd.to_datetime(df_monthly["sej_sor"])
+        df_monthly["mois"] = df_monthly["sej_sor"].dt.to_period("M")
+
+        # Vérifier si la période couvre plus de 2 mois
+        nb_mois = df_monthly["mois"].nunique()
+
+        if nb_mois > 2:
+            # Calculer le taux J0 par mois
+            monthly_stats = []
+            for mois in sorted(df_monthly["mois"].unique()):
+                df_m = df_monthly[df_monthly["mois"] == mois]
+                total_m = len(df_m)
+                nb_j0_m = (df_m["sej_classe"] == "0j").sum() if "sej_classe" in df_m.columns else 0
+                taux_j0_m = (nb_j0_m / total_m * 100) if total_m > 0 else 0
+                nb_sans_ll_m = (df_m["sej_classe"] == "sansLL").sum() if "sej_classe" in df_m.columns else 0
+                taux_val_m = ((total_m - nb_sans_ll_m) / total_m * 100) if total_m > 0 else 0
+                monthly_stats.append({
+                    "mois_label": str(mois),
+                    "total_sejours": total_m,
+                    "taux_j0": round(taux_j0_m, 1),
+                    "taux_validation": round(taux_val_m, 1),
+                })
+
+            # Position après le graphique précédent
+            evol_row = bar_row + int(bar_chart2.height) + 5
+
+            ws.cell(row=evol_row, column=1, value="Évolution mensuelle des indicateurs")
+            apply_cell_style(
+                ws.cell(row=evol_row, column=1),
+                bold=True,
+                font_size=12,
+                bg_color=FOCH_LIGHT_BLUE,
+            )
+            ws.merge_cells(f"A{evol_row}:D{evol_row}")
+
+            # En-têtes
+            header_row = evol_row + 1
+            ws.cell(row=header_row, column=1, value="Mois")
+            ws.cell(row=header_row, column=2, value="Nb séjours")
+            ws.cell(row=header_row, column=3, value="% Validation J0")
+            ws.cell(row=header_row, column=4, value="% LL retrouvées")
+            for col in range(1, 5):
+                apply_cell_style(
+                    ws.cell(row=header_row, column=col),
+                    bold=True,
+                    bg_color=FOCH_DARK_BLUE,
+                    font_color=COLOR_WHITE,
+                )
+
+            # Données mensuelles
+            data_start_row = header_row + 1
+            for i, ms in enumerate(monthly_stats):
+                row = data_start_row + i
+                ws.cell(row=row, column=1, value=ms["mois_label"])
+                ws.cell(row=row, column=2, value=ms["total_sejours"])
+                ws.cell(row=row, column=3, value=ms["taux_j0"])
+                ws.cell(row=row, column=4, value=ms["taux_validation"])
+                apply_cell_style(ws.cell(row=row, column=1), alignment_h="left")
+                apply_cell_style(ws.cell(row=row, column=2))
+                apply_cell_style(ws.cell(row=row, column=3))
+                apply_cell_style(ws.cell(row=row, column=4))
+
+            data_end_row = data_start_row + len(monthly_stats) - 1
+
+            # Graphique courbe
+            line_chart = LineChart()
+            line_chart.title = "Évolution mensuelle du taux de validation J0 et du taux de LL retrouvées"
+            line_chart.x_axis.title = "Mois"
+            line_chart.y_axis.title = "% "
+            line_chart.y_axis.scaling.min = 0
+            line_chart.y_axis.scaling.max = 100
+            line_chart.style = 10
+            line_chart.width = 22
+            line_chart.height = 12
+
+            # Série 1 : Taux J0
+            data_j0 = Reference(ws, min_col=3, min_row=header_row, max_row=data_end_row)
+            # Série 2 : Taux LL retrouvées
+            data_val = Reference(ws, min_col=4, min_row=header_row, max_row=data_end_row)
+            cats_months = Reference(ws, min_col=1, min_row=data_start_row, max_row=data_end_row)
+
+            line_chart.add_data(data_j0, titles_from_data=True)
+            line_chart.add_data(data_val, titles_from_data=True)
+            line_chart.set_categories(cats_months)
+
+            # Couleurs des séries
+            line_chart.series[0].graphicalProperties.line.solidFill = FOCH_BLUE
+            line_chart.series[1].graphicalProperties.line.solidFill = FOCH_GREEN
+
+            # Marqueurs
+            line_chart.series[0].marker.symbol = "circle"
+            line_chart.series[0].marker.size = 5
+            line_chart.series[1].marker.symbol = "diamond"
+            line_chart.series[1].marker.size = 5
+
+            ws.add_chart(line_chart, f"F{evol_row}")
+
+    # ================================================================
     # AJUSTEMENTS FINAUX
     # ================================================================
 
     # Largeurs de colonnes
-    ws.column_dimensions["A"].width = 25
+    ws.column_dimensions["A"].width = 30
     ws.column_dimensions["B"].width = 12
-    ws.column_dimensions["C"].width = 12
-    ws.column_dimensions["D"].width = 12
+    ws.column_dimensions["C"].width = 15
+    ws.column_dimensions["D"].width = 15
 
 
 # --------------------------------------------------------------------

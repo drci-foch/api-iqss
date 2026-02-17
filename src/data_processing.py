@@ -468,9 +468,11 @@ def calculate_validation_stats(df: pd.DataFrame, matrice_path: str = None) -> Di
             }
         )
 
-    # Trier par nombre total décroissant
+    # Trier par taux validation J0 décroissant, puis par nombre de séjours décroissant
     stats_par_spe = sorted(
-        stats_par_spe, key=lambda x: x["total_sejours"], reverse=True
+        stats_par_spe,
+        key=lambda x: (x["taux_validation_j0_over_sejours"], x["total_sejours"]),
+        reverse=True,
     )
 
     return {
