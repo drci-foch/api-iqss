@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     ESL_PASSWORD: str
 
     MATRICE_PATH: str = str(DATA_DIR / "iql_matspe_7.xlsx")
+    MATRICE_SEJ_PATH: str = str(DATA_DIR / "mat_spe_sej.xlsx")
 
     # Configuration Générale
     APP_TITLE: str = "Indicateurs Lettres de Liaison"
