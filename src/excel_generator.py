@@ -10,6 +10,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl.chart import PieChart, BarChart, LineChart, Reference
 from openpyxl.chart.series import DataPoint
+from openpyxl.chart.shapes import GraphicalProperties
 from openpyxl.chart.label import DataLabelList
 from typing import Dict, Optional
 from io import BytesIO
@@ -138,19 +139,6 @@ def create_sheet_resume(
             "-",
             "📊",
             None,
-        ),
-        (
-            "Taux de validation",
-            f"{stats_validation['pct_sejours_validees_all']:.1f}%",
-            "≥ 95%",
-            "✅"
-            if stats_validation["pct_sejours_validees_all"] >= 95
-            else "⚠️"
-            if stats_validation["pct_sejours_validees_all"] >= 85
-            else "❌",
-            get_color_by_threshold(
-                stats_validation["pct_sejours_validees_all"], 95, 85, 70
-            ),
         ),
         (
             "Taux validation J0",
@@ -298,7 +286,6 @@ def create_sheet_validation_detail(
         "SPÉCIALITÉS",
         "Nb total de séjours",
         "Nb LL validées",
-        "% LL validées",
         "Taux de validation à J0 / séjours",
         "Délai validation moyenne)",
         # "Nb LL diffusées",
@@ -317,7 +304,10 @@ def create_sheet_validation_detail(
     # Données par spécialité — triées par taux J0 décroissant, puis nb séjours décroissant
     specialites_validation = sorted(
         stats_validation.get("par_specialite_all", []),
-        key=lambda x: (x.get("taux_validation_j0_over_sejours", 0), x.get("total_sejours", 0)),
+        key=lambda x: (
+            x.get("taux_validation_j0_over_sejours", 0),
+            x.get("total_sejours", 0),
+        ),
         reverse=True,
     )
     if stats_diffusion:
@@ -346,15 +336,9 @@ def create_sheet_validation_detail(
         cell = ws.cell(row=row_idx, column=3, value=spe["nb_sejours_valides"])
         apply_cell_style(cell, bg_color=bg_color)
 
-        # % val.
-        pct_val = spe["pct_sejours_validees"]
-        cell = ws.cell(row=row_idx, column=4, value=f"{pct_val:.1f}%")
-        color_val = get_color_by_threshold(pct_val, 95, 85, 70)
-        apply_cell_style(cell, bg_color=color_val)
-
         # % J0
         pct_j0 = spe["taux_validation_j0_over_sejours"]
-        cell = ws.cell(row=row_idx, column=5, value=f"{pct_j0:.1f}%")
+        cell = ws.cell(row=row_idx, column=4, value=f"{pct_j0:.1f}%")
         color_j0 = get_color_by_threshold(pct_j0, 90, 80, 70)
         apply_cell_style(cell, bg_color=color_j0)
 
@@ -362,31 +346,31 @@ def create_sheet_validation_detail(
         delai_val = spe.get("delai_moyen_validation", 0)
         if delai_val is None or (isinstance(delai_val, float) and pd.isna(delai_val)):
             delai_val = 0
-        cell = ws.cell(row=row_idx, column=6, value=f"{delai_val:.1f}")
+        cell = ws.cell(row=row_idx, column=5, value=f"{delai_val:.1f}")
         apply_cell_style(cell, bg_color=bg_color)
 
         if stats_diffusion:
             spe_diff = diffusion_dict.get(spe["specialite"], {})
             # LL diff.
             nb_diff = spe_diff.get("nb_ll_diffusees", 0)
-            cell = ws.cell(row=row_idx, column=7, value=nb_diff)
+            cell = ws.cell(row=row_idx, column=6, value=nb_diff)
             apply_cell_style(cell, bg_color=bg_color)
 
             # % diff.
             pct_diff = spe_diff.get("pct_ll_diffusees_over_validees", 0)
-            cell = ws.cell(row=row_idx, column=8, value=f"{pct_diff:.1f}%")
+            cell = ws.cell(row=row_idx, column=7, value=f"{pct_diff:.1f}%")
             color_diff = get_color_by_threshold(pct_diff, 90, 75, 60)
             apply_cell_style(cell, bg_color=color_diff)
 
             # % des séjours
             pct_diff_sejours = spe_diff.get("pct_ll_diffusees_over_sejours", 0)
-            cell = ws.cell(row=row_idx, column=9, value=f"{pct_diff_sejours:.1f}%")
+            cell = ws.cell(row=row_idx, column=8, value=f"{pct_diff_sejours:.1f}%")
             color_diff_global = get_color_by_threshold(pct_diff_sejours, 90, 75, 60)
             apply_cell_style(cell, bold=True, bg_color=color_diff_global)
 
             # Taux de diffusion à J0 de la validation
             pct_diff_validation = spe_diff.get("taux_diffusion_J0_validation", 0)
-            cell = ws.cell(row=row_idx, column=10, value=f"{pct_diff_validation:.1f}%")
+            cell = ws.cell(row=row_idx, column=9, value=f"{pct_diff_validation:.1f}%")
             color_diff_global = get_color_by_threshold(pct_diff_validation, 90, 75, 60)
             apply_cell_style(cell, bold=True, bg_color=color_diff_global)
 
@@ -397,7 +381,7 @@ def create_sheet_validation_detail(
                 and pd.isna(delai_diff_validation)
             ):
                 delai_diff_validation = 0
-            cell = ws.cell(row=row_idx, column=11, value=f"{delai_diff_validation:.1f}")
+            cell = ws.cell(row=row_idx, column=10, value=f"{delai_diff_validation:.1f}")
             apply_cell_style(
                 cell, bold=True, font_color=COLOR_WHITE, bg_color=FOCH_DARK_BLUE
             )
@@ -430,15 +414,9 @@ def create_sheet_validation_detail(
     )
     apply_cell_style(cell, bold=True, font_color=COLOR_WHITE, bg_color=FOCH_DARK_BLUE)
 
-    # % LL validées
-    pct_global = stats_validation["pct_sejours_validees_all"]
-    cell = ws.cell(row=total_row, column=4, value=f"{pct_global:.1f}%")
-    color_global = get_color_by_threshold(pct_global, 95, 85, 70)
-    apply_cell_style(cell, bold=True, bg_color=color_global)
-
     # Taux validation à J0 / séjours
     pct_j0_global = stats_validation["taux_validation_j0_over_sejours_all"]
-    cell = ws.cell(row=total_row, column=5, value=f"{pct_j0_global:.1f}%")
+    cell = ws.cell(row=total_row, column=4, value=f"{pct_j0_global:.1f}%")
     color_j0_global = get_color_by_threshold(pct_j0_global, 90, 80, 70)
     apply_cell_style(cell, bold=True, bg_color=color_j0_global)
 
@@ -448,14 +426,14 @@ def create_sheet_validation_detail(
         isinstance(delai_global, float) and pd.isna(delai_global)
     ):
         delai_global = 0
-    cell = ws.cell(row=total_row, column=6, value=f"{delai_global:.1f}")
+    cell = ws.cell(row=total_row, column=5, value=f"{delai_global:.1f}")
     apply_cell_style(cell, bold=True, font_color=COLOR_WHITE, bg_color=FOCH_DARK_BLUE)
 
     if stats_diffusion:
         # Nb LL diffusées
         total_diff = stats_diffusion.get("nb_ll_diffusees_all", 0)
         cell = ws.cell(
-            row=total_row, column=7, value=f"{total_diff:,}".replace(",", " ")
+            row=total_row, column=6, value=f"{total_diff:,}".replace(",", " ")
         )
         apply_cell_style(
             cell, bold=True, font_color=COLOR_WHITE, bg_color=FOCH_DARK_BLUE
@@ -463,19 +441,19 @@ def create_sheet_validation_detail(
 
         # % des validées
         pct_diff_global = stats_diffusion.get("pct_ll_diffusees_over_validees_all", 0)
-        cell = ws.cell(row=total_row, column=8, value=f"{pct_diff_global:.1f}%")
+        cell = ws.cell(row=total_row, column=7, value=f"{pct_diff_global:.1f}%")
         color_diff_global = get_color_by_threshold(pct_diff_global, 90, 75, 60)
         apply_cell_style(cell, bold=True, bg_color=color_diff_global)
 
         # % des séjours
         pct_diff_global = stats_diffusion.get("pct_ll_diffusees_over_sejours_all", 0)
-        cell = ws.cell(row=total_row, column=9, value=f"{pct_diff_global:.1f}%")
+        cell = ws.cell(row=total_row, column=8, value=f"{pct_diff_global:.1f}%")
         color_diff_global = get_color_by_threshold(pct_diff_global, 90, 75, 60)
         apply_cell_style(cell, bold=True, bg_color=color_diff_global)
 
         # Taux de diffusion à J0 de la validation
         pct_diff_global = stats_diffusion.get("taux_diffusion_J0_validation_all", 0)
-        cell = ws.cell(row=total_row, column=10, value=f"{pct_diff_global:.1f}%")
+        cell = ws.cell(row=total_row, column=9, value=f"{pct_diff_global:.1f}%")
         color_diff_global = get_color_by_threshold(pct_diff_global, 90, 75, 60)
         apply_cell_style(cell, bold=True, bg_color=color_diff_global)
 
@@ -485,7 +463,7 @@ def create_sheet_validation_detail(
             isinstance(delai_diff_global, float) and pd.isna(delai_diff_global)
         ):
             delai_diff_global = 0
-        cell = ws.cell(row=total_row, column=11, value=f"{delai_diff_global:.1f}")
+        cell = ws.cell(row=total_row, column=10, value=f"{delai_diff_global:.1f}")
         apply_cell_style(
             cell, bold=True, font_color=COLOR_WHITE, bg_color=FOCH_DARK_BLUE
         )
@@ -494,12 +472,12 @@ def create_sheet_validation_detail(
     if stats_diffusion:
         set_column_widths(
             ws,
-            [25, 10, 10, 10, 10, 12, 10, 10, 10, 10, 12],
+            [25, 10, 10, 10, 12, 10, 10, 10, 10, 12],
         )
     else:
         set_column_widths(
             ws,
-            [25, 10, 10, 10, 10, 12],
+            [25, 10, 10, 10, 12],
         )
 
     # Hauteur des lignes
@@ -638,7 +616,9 @@ def create_sheet_graphiques(
     # ================================================================
     # DONNÉES POUR CAMEMBERT (colonnes A-C, lignes 3-6)
     # ================================================================
-    ws["A3"] = "Répartition des délais de validation par rapport au jour de sortie des LL des séjours de 1 nuit et plus"
+    ws["A3"] = (
+        "Répartition des délais de validation par rapport au jour de sortie des LL des séjours de 1 nuit et plus"
+    )
     apply_cell_style(ws["A3"], bold=True, font_size=12, bg_color=FOCH_LIGHT_BLUE)
     ws.merge_cells("A3:C3")
 
@@ -751,44 +731,69 @@ def create_sheet_graphiques(
     # GRAPHIQUE BARRES HORIZONTALES : % Validation J0 par spécialité
     # ================================================================
 
-    bar_chart = BarChart()
-    bar_chart.type = "bar"  # Barres horizontales
-    bar_chart.style = 10
-    bar_chart.title = "% LL validées le jour de la sortie (J0) par service"
-    bar_chart.y_axis.title = "Service"
-    bar_chart.x_axis.title = "% LL validées J0"
-    bar_chart.x_axis.scaling.min = 0
-    bar_chart.x_axis.scaling.max = 100
+    chart = BarChart()
+    chart.type = "bar"  # barres horizontales
+    chart.width = 28  # ajuste (ex: 18 à 35)
+    chart.height = 14  # ajuste (ex: 10 à 20)
 
-    data_ref = Reference(ws, min_col=4, min_row=13, max_row=row_end)
-    cats_ref = Reference(ws, min_col=1, min_row=14, max_row=row_end)
+    # 2) Afficher les valeurs sur les barres (labels)
+    chart.dLbls = DataLabelList()
+    chart.dLbls.showVal = True  # affiche la valeur
+    chart.dLbls.position = "inEnd"  # "inEnd", "outEnd", "ctr" (à tester selon rendu)
 
-    bar_chart.add_data(data_ref, titles_from_data=True)
-    bar_chart.set_categories(cats_ref)
-    bar_chart.shape = 4
-
-    # Largeur généreuse + hauteur dynamique : 1 cm par spécialité, minimum 15
-    bar_chart.width = 24
-    bar_chart.height = max(15, nb_spe * 1.0)
-
-    # Réduire la taille de police des étiquettes d'axe Y pour éviter le chevauchement
-    bar_chart.y_axis.txPr = None  # reset
-    from openpyxl.chart.text import RichText
-    from openpyxl.drawing.text import Paragraph, ParagraphProperties, CharacterProperties, Font as DrawingFont
-    bar_chart.y_axis.txPr = RichText(
-        p=[Paragraph(
-            pPr=ParagraphProperties(
-                defRPr=CharacterProperties(sz=800)
-            ),
-            endParaRPr=CharacterProperties(sz=800),
-        )]
+    chart.title = (
+        "% LL validées (J0) par spécialité"  # Axes chart.y_axis.title = "Spécialité"
     )
+    chart.x_axis.title = "% LL validées J0"
 
-    # Couleur bleue Foch pour les barres
-    bar_chart.series[0].graphicalProperties.solidFill = FOCH_BLUE
+    ROW_HEADER = 13  # D13 = header
+    ROW_START = 14  # D14 = 1ère valeur
 
-    ws.add_chart(bar_chart, "F12")
+    row_end_this_graph = ROW_HEADER + nb_spe  # ex: 13 + 23 = 36
+    data = Reference(
+        ws, min_col=4, min_row=ROW_HEADER, max_row=row_end_this_graph
+    )  # D13..D36
+    cats = Reference(
+        ws, min_col=1, min_row=ROW_START, max_row=row_end_this_graph
+    )  # A14..A36
 
+    chart.add_data(data, titles_from_data=True)
+
+    chart.set_categories(cats)
+    chart.legend = None
+    # ------------------------------------------------
+    # Mise en forme: barres couleurs
+    # ------------------------------------------------
+    # On suppose une seule série (celle ajoutée via add_data)
+
+    serie = chart.series[0]
+
+    for i in range(nb_spe):
+        v = ws.cell(row=ROW_START + i, column=4).value  # colonne D
+        if v is None or not isinstance(v, (int, float)):
+            continue
+
+        # Détecte le format (0..1 ou 0..100)
+        if v <= 1:
+            v_pct = v * 100
+        else:
+            v_pct = v
+
+        # Couleurs selon seuils
+        if v_pct < 70:
+            color = "FF0000"  # rouge
+        elif v_pct < 80:
+            color = "FFA500"  # orange
+        elif v_pct < 90:
+            color = "FFFF00"  # jaune
+        else:
+            color = "00B050"  # vert (vert Excel classique)
+
+        dp = DataPoint(idx=i)
+        dp.graphicalProperties = GraphicalProperties(solidFill=color)
+        serie.dPt.append(dp)
+
+    ws.add_chart(chart, "F12")
     # ================================================================
     # GRAPHIQUE BARRES VERTICALES : Nb séjours par spécialité (Top 15 par volume)
     # ================================================================
@@ -873,16 +878,28 @@ def create_sheet_graphiques(
             for mois in sorted(df_monthly["mois"].unique()):
                 df_m = df_monthly[df_monthly["mois"] == mois]
                 total_m = len(df_m)
-                nb_j0_m = (df_m["sej_classe"] == "0j").sum() if "sej_classe" in df_m.columns else 0
+                nb_j0_m = (
+                    (df_m["sej_classe"] == "0j").sum()
+                    if "sej_classe" in df_m.columns
+                    else 0
+                )
                 taux_j0_m = (nb_j0_m / total_m * 100) if total_m > 0 else 0
-                nb_sans_ll_m = (df_m["sej_classe"] == "sansLL").sum() if "sej_classe" in df_m.columns else 0
-                taux_val_m = ((total_m - nb_sans_ll_m) / total_m * 100) if total_m > 0 else 0
-                monthly_stats.append({
-                    "mois_label": str(mois),
-                    "total_sejours": total_m,
-                    "taux_j0": round(taux_j0_m, 1),
-                    "taux_validation": round(taux_val_m, 1),
-                })
+                nb_sans_ll_m = (
+                    (df_m["sej_classe"] == "sansLL").sum()
+                    if "sej_classe" in df_m.columns
+                    else 0
+                )
+                taux_val_m = (
+                    ((total_m - nb_sans_ll_m) / total_m * 100) if total_m > 0 else 0
+                )
+                monthly_stats.append(
+                    {
+                        "mois_label": str(mois),
+                        "total_sejours": total_m,
+                        "taux_j0": round(taux_j0_m, 1),
+                        "taux_validation": round(taux_val_m, 1),
+                    }
+                )
 
             # Position après le graphique précédent
             evol_row = bar_row + int(bar_chart2.height) + 5
@@ -939,8 +956,12 @@ def create_sheet_graphiques(
             # Série 1 : Taux J0
             data_j0 = Reference(ws, min_col=3, min_row=header_row, max_row=data_end_row)
             # Série 2 : Taux LL retrouvées
-            data_val = Reference(ws, min_col=4, min_row=header_row, max_row=data_end_row)
-            cats_months = Reference(ws, min_col=1, min_row=data_start_row, max_row=data_end_row)
+            data_val = Reference(
+                ws, min_col=4, min_row=header_row, max_row=data_end_row
+            )
+            cats_months = Reference(
+                ws, min_col=1, min_row=data_start_row, max_row=data_end_row
+            )
 
             line_chart.add_data(data_j0, titles_from_data=True)
             line_chart.add_data(data_val, titles_from_data=True)
@@ -1012,7 +1033,6 @@ if __name__ == "__main__":
     test_stats_validation = {
         "total_sejours_all": 1599,
         "nb_sejours_valides_all": 1508,
-        "pct_sejours_validees_all": 94.3,
         "taux_validation_j0_over_sejours_all": 81.4,
         "delai_moyen_validation_all": 0.8,
         "par_specialite_all": [
@@ -1020,7 +1040,6 @@ if __name__ == "__main__":
                 "specialite": "GERIATRIE",
                 "total_sejours": 150,
                 "nb_sejours_valides": 150,
-                "pct_sejours_validees": 100.0,
                 "taux_validation_j0_over_sejours": 100.0,
                 "delai_moyen_validation": 0.0,
             },
@@ -1028,7 +1047,6 @@ if __name__ == "__main__":
                 "specialite": "THORACIQUE",
                 "total_sejours": 120,
                 "nb_sejours_valides": 120,
-                "pct_sejours_validees": 100.0,
                 "taux_validation_j0_over_sejours": 100.0,
                 "delai_moyen_validation": 0.0,
             },
@@ -1036,7 +1054,6 @@ if __name__ == "__main__":
                 "specialite": "CARDIOLOGIE",
                 "total_sejours": 200,
                 "nb_sejours_valides": 200,
-                "pct_sejours_validees": 100.0,
                 "taux_validation_j0_over_sejours": 100.0,
                 "delai_moyen_validation": 0.0,
             },
@@ -1044,7 +1061,6 @@ if __name__ == "__main__":
                 "specialite": "PNEUMOLOGIE",
                 "total_sejours": 90,
                 "nb_sejours_valides": 70,
-                "pct_sejours_validees": 77.8,
                 "taux_validation_j0_over_sejours": 77.8,
                 "delai_moyen_validation": 0.5,
             },
@@ -1052,7 +1068,6 @@ if __name__ == "__main__":
                 "specialite": "MEDECINE INTERNE",
                 "total_sejours": 60,
                 "nb_sejours_valides": 40,
-                "pct_sejours_validees": 66.7,
                 "taux_validation_j0_over_sejours": 66.7,
                 "delai_moyen_validation": 0.8,
             },
@@ -1060,7 +1075,6 @@ if __name__ == "__main__":
                 "specialite": "ONCOLOGIE",
                 "total_sejours": 80,
                 "nb_sejours_valides": 40,
-                "pct_sejours_validees": 50.0,
                 "taux_validation_j0_over_sejours": 50.0,
                 "delai_moyen_validation": 1.2,
             },
