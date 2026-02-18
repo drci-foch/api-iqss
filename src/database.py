@@ -91,18 +91,20 @@ def get_sejours_data(
             ho_num as sej_id, 
             ho_ddeb as sej_ent, 
             ho_dfin as sej_sor,
-            mha.mh_ufcode as uf_sortie
+            mha.mh_ufcode as uf_sortie,
+            tab_uf.uf_lib as uf_libelle_sej 
         FROM drci.hospitalisation 
         LEFT JOIN drci.mouv_hospi mha ON ho_num = mh_honum  
         LEFT JOIN drci.serveur_identite ON HO_MANUMDOS = SI_NUMDOS 
-        LEFT JOIN drci.uf ON mha.mh_ufcode = uf_code 
+        LEFT JOIN drci.uf tab_uf ON mha.mh_ufcode = uf_code 
         WHERE 1=1
             AND mh_der = 'X'
             AND ho_recode = 'HC'
             AND ho_dfin IS NOT NULL
             AND (ho_dfin - ho_ddeb) >= 1
             AND uf_hjour IS NULL
-            AND mha.mh_ufcode NOT IN ('TEST99','392A','348U','537U','553A','294U','294E','350B','393A','393B','393C','549B','394B','675B','540A')
+            AND mha.mh_ufcode NOT IN ('TEST99','392A','348U','537U','553A','294U','294E','350B','393A','393B',
+            '393C','549B','394B','675B','540A','392A','392B', '420A','417E','417A')
             AND (Si_DATEDEC IS NULL OR TRUNC(Si_DATEDEC) != TRUNC(ho_dfin))
         """
 
@@ -240,9 +242,11 @@ def get_documents_data(
         # Si grand-mère existe, prendre sa date de création
         if "doc_grandmerecrea" in df.columns and "doc_creamere" in df.columns:
             df["doc_creamere"] = df.apply(
-                lambda row: row["doc_grandmerecrea"]
-                if pd.notna(row["doc_grandmerecrea"])
-                else row["doc_creamere"],
+                lambda row: (
+                    row["doc_grandmerecrea"]
+                    if pd.notna(row["doc_grandmerecrea"])
+                    else row["doc_creamere"]
+                ),
                 axis=1,
             )
         # Nettoyage des IPP
