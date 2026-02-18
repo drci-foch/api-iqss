@@ -90,6 +90,7 @@ api-iqss/
 │   └── static/index.html    # Web interface
 ├── data/db/                  # Specialty mapping matrix
 ├── Dockerfile
+├── .env
 └── requirements.txt
 ```
 
