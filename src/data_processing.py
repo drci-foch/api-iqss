@@ -39,6 +39,7 @@ def load_matrice_specialite(
     try:
         # Lire le fichier Excel (v7 utilise .xlsx au lieu de .csv)
         matrice = pd.read_excel(matrice_path, dtype={"sej_uf": str})
+        matrice["sej_uf"] = matrice["sej_uf"].str.strip()
         matrice["doc_key_norm"] = matrice["doc_key"].apply(normalize_text)
         # Supprimer les doublons (garder la première occurrence)
         matrice = matrice.drop_duplicates(
@@ -52,6 +53,7 @@ def load_matrice_specialite(
         csv_path = matrice_path.replace(".xlsx", ".csv")
         try:
             matrice = pd.read_csv(csv_path, dtype={"sej_uf": str})
+            matrice["sej_uf"] = matrice["sej_uf"].str.strip()
             matrice["doc_key_norm"] = matrice["doc_key"].apply(normalize_text)
             matrice = matrice.drop_duplicates(
                 subset=["sej_uf", "doc_key_norm"], keep="first"
@@ -64,6 +66,33 @@ def load_matrice_specialite(
             )
     except Exception as e:
         raise Exception(f"Erreur lors du chargement de la matrice : {e}")
+
+
+def load_matrice_specialite_sejours(
+    matrice_sej_path: str = None,
+) -> pd.DataFrame:
+    """
+    Charge la matrice de spécialité basée sur le sej_uf seul (sans doc_key).
+    Utilisée en fallback pour les séjours sans document.
+
+    Args:
+        matrice_sej_path: Chemin vers le fichier Excel mat_spe_sej.xlsx
+
+    Returns:
+        DataFrame avec les mappings sej_uf -> sej_spe_normalisee
+    """
+    if matrice_sej_path is None:
+        matrice_sej_path = settings.MATRICE_SEJ_PATH
+
+    matrice_sej = pd.read_excel(matrice_sej_path, dtype={"sej_uf": str})
+    matrice_sej["sej_uf"] = matrice_sej["sej_uf"].astype(str).str.strip()
+    # Supprimer les lignes sans spécialité et les doublons
+    matrice_sej = matrice_sej.dropna(subset=["sej_spe_normalisee"])
+    matrice_sej["sej_spe_normalisee"] = (
+        matrice_sej["sej_spe_normalisee"].astype(str).str.strip()
+    )
+    matrice_sej = matrice_sej.drop_duplicates(subset=["sej_uf"], keep="first")
+    return matrice_sej
 
 
 def create_doc_key(libelle: str) -> str:
@@ -103,7 +132,10 @@ def create_doc_key(libelle: str) -> str:
 
 
 def merge_sejours_documents(
-    sejours: pd.DataFrame, documents: pd.DataFrame, matrice_path: Optional[str] = None
+    sejours: pd.DataFrame,
+    documents: pd.DataFrame,
+    matrice_path: Optional[str] = None,
+    matrice_sej_path: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Fusionne les données de séjours et documents selon la méthodologie IQL R v7
@@ -134,6 +166,8 @@ def merge_sejours_documents(
 
     if matrice_path is None:
         matrice_path = settings.MATRICE_PATH
+    if matrice_sej_path is None:
+        matrice_sej_path = settings.MATRICE_SEJ_PATH
 
     sejours = sejours.copy()
     documents = documents.copy()
@@ -144,7 +178,8 @@ def merge_sejours_documents(
 
     sejours["pat_ipp"] = sejours["pat_ipp"].astype(str)
     documents["pat_ipp"] = documents["pat_ipp"].astype(str)
-    sejours["sej_uf"] = sejours["sej_uf"].astype(str)
+    sejours["sej_uf"] = sejours["sej_uf"].astype(str).str.strip()
+    sejours["uf_libelle_sej"] = sejours["uf_libelle_sej"].astype(str)
 
     if "doc_key" not in documents.columns:
         documents["doc_key"] = documents["doc_libelle"].apply(create_doc_key)
@@ -348,14 +383,16 @@ def merge_sejours_documents(
     #                      TRUE ~ max(0,del_sorval))
 
     data_best["del_val"] = data_best.apply(
-        lambda row: np.nan
-        if (
-            pd.isna(row["del_sorval"]) or np.isinf(row["del_sorval"])
-            if pd.notna(row["del_sorval"])
-            else True
-        )
-        or pd.isna(row["sej_spe"])
-        else max(0, row["del_sorval"]),
+        lambda row: (
+            np.nan
+            if (
+                pd.isna(row["del_sorval"]) or np.isinf(row["del_sorval"])
+                if pd.notna(row["del_sorval"])
+                else True
+            )
+            or pd.isna(row["sej_spe"])
+            else max(0, row["del_sorval"])
+        ),
         axis=1,
     )
 
@@ -376,7 +413,30 @@ def merge_sejours_documents(
     data_best["sej_classe"] = data_best["del_val"].apply(classify_sejour)
 
     # ========================================
-    # ÉTAPE 12 : AJOUT DES SÉJOURS SANS DOCUMENT
+    # ÉTAPE 11.5 : FALLBACK SPÉCIALITÉ pour séjours AVEC doc mais sej_spe = NaN
+    # ========================================
+    # Si le merge iql_matspe_7 (sej_uf + doc_key) n'a pas trouvé de spécialité,
+    # on utilise mat_spe_sej (uf_sortie seul) en dernier recours.
+    # ⚠️ Pour désactiver ce fallback, commenter le bloc ci-dessous.
+
+    mask_spe_manquante = data_best["sej_spe"].isna()
+    if mask_spe_manquante.any():
+        try:
+            matrice_sej = load_matrice_specialite_sejours(matrice_sej_path)
+            fallback_map = matrice_sej.set_index("sej_uf")["sej_spe_normalisee"]
+            data_best.loc[mask_spe_manquante, "sej_spe"] = data_best.loc[
+                mask_spe_manquante, "uf_sortie"
+            ].map(fallback_map)
+            nb_recuperes = mask_spe_manquante.sum() - data_best["sej_spe"].isna().sum()
+            print(
+                f"Fallback spécialité (séjours avec doc) : "
+                f"{nb_recuperes}/{mask_spe_manquante.sum()} séjours récupérés"
+            )
+        except Exception as e:
+            print(f"Impossible de charger la matrice séjours pour fallback : {e}")
+
+    # ========================================
+    # ÉTAPE 12 : AJOUT DES SÉJOURS SANS DOCUMENT + FALLBACK SPÉCIALITÉ
     # ========================================
 
     sejours_sans_doc = sejours[~sejours["sej_id"].isin(data_best["sej_id"])].copy()
@@ -386,6 +446,21 @@ def merge_sejours_documents(
         for col in data_best.columns:
             if col not in sejours_sans_doc.columns:
                 sejours_sans_doc[col] = np.nan
+
+        # Fallback spécialité : pour les séjours sans document,
+        # on utilise mat_spe_sej (sej_uf seul) pour attribuer une spécialité
+        try:
+            matrice_sej = load_matrice_specialite_sejours(matrice_sej_path)
+            sejours_sans_doc = sejours_sans_doc.merge(
+                matrice_sej[["sej_uf", "sej_spe_normalisee"]],
+                on="sej_uf",
+                how="left",
+            )
+            # Remplir sej_spe avec la spécialité du fallback
+            sejours_sans_doc["sej_spe"] = sejours_sans_doc["sej_spe_normalisee"]
+            sejours_sans_doc.drop(columns=["sej_spe_normalisee"], inplace=True)
+        except Exception as e:
+            print(f"Impossible de charger la matrice séjours pour fallback : {e}")
 
         # Ces séjours sont classés sansLL
         sejours_sans_doc["sej_classe"] = "sansLL"
@@ -433,8 +508,8 @@ def calculate_validation_stats(df: pd.DataFrame, matrice_path: str = None) -> Di
 
     # =================TABLEAU GAELLE SUR VALIDATION==================
     nb_ll_validees_all = df["doc_val"].notna().sum()
-    pct_ll_validees_all = df["doc_val"].notna().mean() * 100
     taux_validation_J0_over_sejours_all = float((df["sej_classe"] == "0j").mean() * 100)
+    df["del_sorval"] = df["del_sorval"].where(df["del_sorval"] >= 0, 0)
     delai_validation_moyenne_all = df["del_sorval"].mean()
 
     # Statistiques par spécialité
@@ -446,7 +521,6 @@ def calculate_validation_stats(df: pd.DataFrame, matrice_path: str = None) -> Di
 
         # =================TABLEAU GAELLE SUR VALIDATION==================
         nb_ll_validees = df_spe["doc_val"].notna().sum()
-        pct_ll_validees = df_spe["doc_val"].notna().mean() * 100
         taux_validation_J0_over_sejours = float(
             (df_spe["sej_classe"] == "0j").mean() * 100
         )
@@ -458,7 +532,6 @@ def calculate_validation_stats(df: pd.DataFrame, matrice_path: str = None) -> Di
                 "specialite": str(spe),
                 "total_sejours": int(total_sejours),
                 "nb_sejours_valides": int(nb_ll_validees),
-                "pct_sejours_validees": float(pct_ll_validees),
                 "taux_validation_j0_over_sejours": float(
                     taux_validation_J0_over_sejours
                 ),
@@ -478,7 +551,6 @@ def calculate_validation_stats(df: pd.DataFrame, matrice_path: str = None) -> Di
     return {
         "total_sejours_all": int(total_sejours_all),
         "nb_sejours_valides_all": int(nb_ll_validees_all),
-        "pct_sejours_validees_all": float(pct_ll_validees_all),
         "taux_validation_j0_over_sejours_all": float(
             taux_validation_J0_over_sejours_all
         ),
