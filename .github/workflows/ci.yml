@@ -1,0 +1,30 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Login to Harbor
+        run: |
+          docker login 10.2.240.5:8080 \
+            -u ${{ secrets.HARBOR_USERNAME }} \
+            -p ${{ secrets.HARBOR_PASSWORD }}
+
+      - name: Build image
+        run: |
+          docker build -t 10.2.240.5:8080/production/api-iqss:${{ github.sha }} .
+          docker tag 10.2.240.5:8080/production/api-iqss:${{ github.sha }} \
+            10.2.240.5:8080/production/api-iqss:latest
+
+      - name: Push image
+        run: |
+          docker push 10.2.240.5:8080/production/api-iqss:${{ github.sha }}
+          docker push 10.2.240.5:8080/production/api-iqss:latest
