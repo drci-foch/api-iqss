@@ -4,6 +4,7 @@ Version 1.1 - Avec feuille de graphiques
 """
 
 import pandas as pd
+import time
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -12,6 +13,7 @@ from openpyxl.chart import PieChart, BarChart, LineChart, Reference
 from openpyxl.chart.series import DataPoint
 from openpyxl.chart.shapes import GraphicalProperties
 from openpyxl.chart.label import DataLabelList
+from openpyxl.cell import WriteOnlyCell
 from typing import Dict, Optional
 from io import BytesIO
 
@@ -485,73 +487,105 @@ def create_sheet_validation_detail(
     ws.row_dimensions[2].height = 35
 
 
-def create_sheet_dataframe_analysis(wb: Workbook, df: pd.DataFrame, period: str):
-    """Feuille : DataFrame d'analyse brut"""
-    ws = wb.create_sheet("Données d'analyse")
+def create_sheet_dataframe_raw(wb_writeonly, df: pd.DataFrame):
+    """
+    Write DataFrame to a write-only sheet as RAW VALUES (no styling).
+    Plain ws.append(list) is the fastest possible openpyxl write path.
+    Styling is applied in bulk after reload via apply_dataframe_styles().
+    """
+    ws = wb_writeonly.create_sheet(title="Données d'analyse")
 
-    # En-tête
-    ws.merge_cells(f"A1:{get_column_letter(len(df.columns))}1")
-    cell = ws["A1"]
-    cell.value = f"DONNÉES D'ANALYSE - {period}"
-    apply_cell_style(
-        cell, font_size=14, bold=True, font_color=COLOR_WHITE, bg_color=FOCH_BLUE
+    num_cols = len(df.columns)
+
+    t_write = time.perf_counter()
+
+    # --- Row 1: Header (plain values) ---
+    ws.append(list(df.columns))
+
+    # --- Data rows: convert DataFrame to plain Python lists ---
+    values = df.values
+    for r_idx in range(len(values)):
+        raw_row = values[r_idx]
+        row = []
+        for c_idx in range(num_cols):
+            val = raw_row[c_idx]
+            try:
+                if val is None or (isinstance(val, float) and val != val):
+                    row.append(None)
+                elif hasattr(val, "item"):
+                    row.append(val.item())
+                else:
+                    row.append(val)
+            except (ValueError, TypeError):
+                row.append(str(val) if val is not None else None)
+        ws.append(row)
+
+    t_write_end = time.perf_counter()
+    print(
+        f"[PROFILING]     sheet_dataframe: raw write-only append: {t_write_end - t_write:.3f}s"
     )
 
-    # Sous-titre
-    ws.merge_cells(f"A2:{get_column_letter(len(df.columns))}2")
-    cell = ws["A2"]
-    cell.value = f"Nombre total de lignes : {len(df):,}".replace(",", " ")
-    apply_cell_style(cell, font_size=11, bold=True, bg_color=FOCH_LIGHT_BLUE)
 
-    # Espace
-    ws.row_dimensions[3].height = 5
+def apply_dataframe_styles(ws, df: pd.DataFrame):
+    """
+    Apply styles in bulk to the data analysis sheet AFTER reload.
+    Much faster than per-cell WriteOnlyCell styling because:
+    - Cells already exist from XML parsing (lightweight)
+    - Shared style objects are assigned by reference (no object creation per cell)
+    """
+    t_style = time.perf_counter()
 
-    # Convertir le DataFrame en lignes Excel
-    for r_idx, row in enumerate(
-        dataframe_to_rows(df, index=False, header=True), start=4
-    ):
-        for c_idx, value in enumerate(row, start=1):
-            cell = ws.cell(row=r_idx, column=c_idx, value=value)
+    num_cols = len(df.columns)
 
-            # Style pour l'en-tête
-            if r_idx == 4:
-                apply_cell_style(
-                    cell,
-                    bold=True,
-                    font_color=COLOR_WHITE,
-                    bg_color=FOCH_DARK_BLUE,
-                    alignment_h="center",
-                )
-            else:
-                # Style alternant pour les données
-                bg_color = COLOR_WHITE if r_idx % 2 == 0 else "F8F9FA"
-                apply_cell_style(
-                    cell,
-                    bg_color=bg_color,
-                    alignment_h="left" if isinstance(value, str) else "center",
-                    font_size=10,
-                )
+    # Pre-create shared style objects
+    header_font = Font(name="Calibri", size=11, bold=True, color=COLOR_WHITE)
+    header_fill = PatternFill(
+        start_color=FOCH_DARK_BLUE, end_color=FOCH_DARK_BLUE, fill_type="solid"
+    )
+    header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
 
-    # Ajuster automatiquement la largeur des colonnes
-    for col_idx in range(1, len(df.columns) + 1):
-        max_length = 0
-        column_letter = ws.cell(row=4, column=col_idx).column_letter
+    # Pre-identify string columns for alignment
+    str_cols = set()
+    for c_idx, col_name in enumerate(df.columns, start=1):
+        if df[col_name].dtype == object:
+            str_cols.add(c_idx)
 
-        for row_idx in range(4, ws.max_row + 1):
-            cell = ws.cell(row=row_idx, column=col_idx)
-            if cell.value:
-                max_length = max(max_length, len(str(cell.value)))
+    # Style header row (row 1)
+    for col_idx in range(1, num_cols + 1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+        # cell.border = thin_border
 
-        adjusted_width = min(max(max_length + 2, 12), 50)
-        ws.column_dimensions[column_letter].width = adjusted_width
+    # Style data rows (row 2+) and compute column widths
+    col_max_lengths = [0] * (num_cols + 1)
 
-    # Hauteur des lignes d'en-tête
-    ws.row_dimensions[1].height = 25
-    ws.row_dimensions[2].height = 20
-    ws.row_dimensions[4].height = 30
+    # Track header widths
+    for col_idx in range(1, num_cols + 1):
+        val = ws.cell(row=1, column=col_idx).value
+        if val is not None:
+            col_max_lengths[col_idx] = len(str(val))
 
-    # Figer les volets
-    ws.freeze_panes = "A5"
+            # Track column widths
+            val = cell.value
+            if val is not None:
+                val_len = len(str(val))
+                if val_len > col_max_lengths[col_idx]:
+                    col_max_lengths[col_idx] = val_len
+
+    # Set column widths
+    for col_idx in range(1, num_cols + 1):
+        adjusted_width = min(max(col_max_lengths[col_idx] + 2, 12), 50)
+        ws.column_dimensions[get_column_letter(col_idx)].width = adjusted_width
+
+    # Freeze header
+    ws.freeze_panes = "A2"
+
+    t_style_end = time.perf_counter()
+    print(
+        f"[PROFILING]     sheet_dataframe: bulk style after reload: {t_style_end - t_style:.3f}s"
+    )
 
 
 # --------------------------------------------------------------------
@@ -1001,29 +1035,97 @@ def generate_excel(
     stats_diffusion: Optional[Dict] = None,
     df_analysis: Optional[pd.DataFrame] = None,
 ) -> bytes:
-    """Générer le fichier Excel avec toutes les feuilles et le retourner en mémoire"""
+    """
+    Générer le fichier Excel avec toutes les feuilles et le retourner en mémoire.
 
-    wb = Workbook()
+    Strategy:
+    1. Create write-only workbook with the large data sheet (fast append-based writing)
+    2. Save to buffer, reload as normal workbook (openpyxl XML parsing is fast)
+    3. Add remaining small sheets (resume, validation_detail, graphiques) that need
+       merge_cells, freeze_panes, charts — these have few cells so normal mode is fine
+    4. Save final workbook
+    """
+    from openpyxl import load_workbook
 
-    # Supprimer la feuille par défaut
-    if "Sheet" in wb.sheetnames:
-        wb.remove(wb["Sheet"])
+    t_excel_total = time.perf_counter()
+    timings = {}
 
-    # Créer les feuilles
+    has_data = df_analysis is not None and not df_analysis.empty
+
+    if has_data:
+        # ============================================================
+        # STEP 1: Write-only workbook — raw values only (no styling)
+        # ============================================================
+        t_step = time.perf_counter()
+        wb_wo = Workbook(write_only=True)
+        create_sheet_dataframe_raw(wb_wo, df_analysis)
+
+        # Save write-only workbook to buffer
+        buf_wo = BytesIO()
+        wb_wo.save(buf_wo)
+        buf_wo.seek(0)
+        timings["sheet_dataframe_raw+save"] = time.perf_counter() - t_step
+
+        # ============================================================
+        # STEP 2: Reload as normal workbook + bulk apply styles
+        # ============================================================
+        t_step = time.perf_counter()
+        wb = load_workbook(buf_wo)
+        timings["reload_workbook"] = time.perf_counter() - t_step
+
+        t_step = time.perf_counter()
+        apply_dataframe_styles(wb["Données d'analyse"], df_analysis)
+        timings["bulk_style_data_sheet"] = time.perf_counter() - t_step
+    else:
+        wb = Workbook()
+        # Supprimer la feuille par défaut
+        if "Sheet" in wb.sheetnames:
+            wb.remove(wb["Sheet"])
+
+    # ============================================================
+    # STEP 3: Add small sheets (normal mode — few cells, needs merge/charts)
+    # ============================================================
+
+    # Insert resume at position 0 (before data sheet)
+    t_step = time.perf_counter()
     create_sheet_resume(wb, stats_validation, period, stats_diffusion)
+    timings["sheet_resume"] = time.perf_counter() - t_step
+
+    # Insert validation detail at position 1
+    t_step = time.perf_counter()
     create_sheet_validation_detail(wb, stats_validation, period, stats_diffusion)
+    timings["sheet_validation_detail"] = time.perf_counter() - t_step
 
-    # Ajouter la feuille DataFrame si fournie
-    if df_analysis is not None and not df_analysis.empty:
-        create_sheet_dataframe_analysis(wb, df_analysis, period)
-
-    # NOUVELLE FEUILLE : Graphiques
+    # Graphiques
+    t_step = time.perf_counter()
     create_sheet_graphiques(wb, stats_validation, df_analysis, period)
+    timings["sheet_graphiques"] = time.perf_counter() - t_step
 
-    # Sauvegarder dans un buffer en mémoire
+    # Move "Données d'analyse" to last position
+    if has_data:
+        current_idx = wb.sheetnames.index("Données d'analyse")
+        wb.move_sheet("Données d'analyse", offset=len(wb.sheetnames) - 1 - current_idx)
+
+    # ============================================================
+    # STEP 4: Save final workbook
+    # ============================================================
+    t_step = time.perf_counter()
     buffer = BytesIO()
     wb.save(buffer)
     buffer.seek(0)
+    timings["wb_save"] = time.perf_counter() - t_step
+
+    t_total = time.perf_counter() - t_excel_total
+    print(f"\n[PROFILING] === generate_excel ===")
+    for step, duration in timings.items():
+        pct = (duration / t_total) * 100
+        bar = "█" * int(pct / 2)
+        print(f"[PROFILING]   {step:.<40s} {duration:6.3f}s ({pct:5.1f}%) {bar}")
+    print(f"[PROFILING]   {'TOTAL':.<40s} {t_total:6.3f}s")
+    if df_analysis is not None:
+        print(
+            f"[PROFILING]   DataFrame: {len(df_analysis)} lignes x {len(df_analysis.columns)} colonnes"
+        )
 
     return buffer.getvalue()
 
