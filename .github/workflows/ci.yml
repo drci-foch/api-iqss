@@ -29,3 +29,12 @@ jobs:
         run: |
           docker push 10.2.240.5:8080/production/api-iqss:${{ github.sha }}
           docker push 10.2.240.5:8080/production/api-iqss:latest
+          
+      - name: Update deployment image
+        run: |
+          sed -i "s|image: 10.2.240.5:8080/production/api-iqss:.*|image: 10.2.240.5:8080/production/api-iqss:${{ github.sha }}|g" k8s/deployment.yaml
+          git config user.email "github-actions@github.com"
+          git config user.name "GitHub Actions"
+          git add k8s/deployment.yaml
+          git commit -m "update image tag to ${{ github.sha }}"
+          git push
