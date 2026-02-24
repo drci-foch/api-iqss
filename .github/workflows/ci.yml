@@ -9,15 +9,14 @@ jobs:
   build-and-push:
     runs-on: self-hosted
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Login to Harbor  # ← NOUVEAU
-        uses: docker/login-action@v3
-        with:
-          registry: 10.2.240.5:8080
-          username: ${{ secrets.HARBOR_USERNAME }}
-          password: ${{ secrets.HARBOR_PASSWORD }}
-          insecure: true
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Login to Harbor
+        run: |
+          echo "${{ secrets.HARBOR_PASSWORD }}" | docker login http://10.2.240.5:8080 \
+            --username ${{ secrets.HARBOR_USERNAME }} \
+            --password-stdin
 
 
       - name: Build image
