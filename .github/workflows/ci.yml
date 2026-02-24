@@ -12,21 +12,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         
-      - name: Debug Docker (CRITIQUE)
+      - name: Login to Harbor
         run: |
-          echo "=== UTILISATEUR ==="
-          whoami
-          id
-          
-          echo "=== DOCKER INFO ==="
-          docker context ls
-          docker info | grep -A 10 "Insecure Registries" || true
-          
-          echo "=== DOCKER CONFIG USER ==="
-          ls -la ~/.docker/ || echo "Pas de .docker"
-          
-          echo "=== DAEMON.JSON ==="
-          sudo cat /etc/docker/daemon.json || echo "Pas de daemon.json"
+          sudo -E -u adminapp3 docker login 10.2.240.5:8080 \
+            --username ${{ secrets.HARBOR_USERNAME }} \
+            --password-stdin <<< "${{ secrets.HARBOR_PASSWORD }}"
 
 
       - name: Build image
