@@ -18,5 +18,8 @@ spec:
         image: 10.2.240.5:8080/production/api-iqss:ea6c64acc8d729a4ae607d45097f7452ffdd3142
         ports:
         - containerPort: 8000   # port sur lequel FastAPI écoute
+        envFrom:
+        - secretRef:
+          name: api-iqss-secret
       imagePullSecrets:
       - name: harbor-secret     # secret pour s'authentifier à Harbor
