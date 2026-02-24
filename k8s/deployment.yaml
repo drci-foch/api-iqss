@@ -20,6 +20,6 @@ spec:
         - containerPort: 8000   # port sur lequel FastAPI écoute
         envFrom:
         - secretRef:
-          name: api-iqss-secret
+            name: api-iqss-secret
       imagePullSecrets:
       - name: harbor-secret     # secret pour s'authentifier à Harbor
