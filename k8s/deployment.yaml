@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: api-iqss
-        image: 10.2.240.5:8080/production/api-iqss:latest  # image depuis Harbor
+        image: 10.2.240.5:8080/production/api-iqss:ea6c64acc8d729a4ae607d45097f7452ffdd3142
         ports:
         - containerPort: 8000   # port sur lequel FastAPI écoute
       imagePullSecrets:
