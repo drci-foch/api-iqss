@@ -9,24 +9,15 @@ jobs:
   build-and-push:
     runs-on: self-hosted
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Login to Harbor
-        run: |
-          echo "=== 1. Vérification secrets ==="
-          echo "User: '${{ secrets.HARBOR_USERNAME }}'"
-          echo "Pass OK: ${{ secrets.HARBOR_PASSWORD != '' && '✓ OK' || '✗ VIDE' }}"
-          
-          echo "=== 2. Config Docker insecure ==="
-          mkdir -p ~/.docker
-          echo '{"insecure-registries":["10.2.240.5:8080"]}' > ~/.docker/config.json
-          
-          echo "=== 3. Test connexion Harbor ==="
-          docker login http://10.2.240.5:8080 \
-            --username ${{ secrets.HARBOR_USERNAME }} \
-            --password-stdin <<< "${{ secrets.HARBOR_PASSWORD }}" && \
-          echo "✓ LOGIN RÉUSSI" || echo "✗ LOGIN ÉCHOUÉ"
+      - uses: actions/checkout@v4
+      
+      - name: Login to Harbor  # ← NOUVEAU
+        uses: docker/login-action@v3
+        with:
+          registry: 10.2.240.5:8080
+          username: ${{ secrets.HARBOR_USERNAME }}
+          password: ${{ secrets.HARBOR_PASSWORD }}
+          insecure: true
 
 
       - name: Build image
