@@ -1,7 +1,6 @@
 # API-IQSS - Lettres de Liaison Reporting
 
 Automated reporting system for hospital discharge letters (Lettres de Liaison) indicators at Hôpital Foch.
-Test sur cicd 5
 
 ## Overview
 
