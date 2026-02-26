@@ -21,5 +21,12 @@ spec:
         envFrom:
             - secretRef:
                 name: api-iqss-secret
+        volumeMounts:
+        - name: data
+          mountPath: /api-iqss/data
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: api-iqss-data
       imagePullSecrets:
       - name: harbor-secret     # secret pour s'authentifier à Harbor
