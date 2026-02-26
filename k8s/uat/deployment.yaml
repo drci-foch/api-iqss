@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-iqss          # nom du déploiement
+  namespace: uat
+spec:
+  replicas: 1             # nombre de pods à lancer
+  selector:
+    matchLabels:
+      app: api-iqss
+  template:
+    metadata:
+      labels:
+        app: api-iqss
+    spec:
+      containers:
+      - name: api-iqss
+        image: 10.2.240.5:8080/production/api-iqss:uat-0fe253f939abca4bb8e4630a12aae3a1d491e6a6
+        ports:
+        - containerPort: 8080   # port sur lequel FastAPI écoute
+        envFrom:
+            - secretRef:
+                name: api-iqss-secret
+      imagePullSecrets:
+      - name: harbor-secret     # secret pour s'authentifier à Harbor
