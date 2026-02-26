@@ -1,10 +1,10 @@
 name: CI/CD
 
 on:
-# push:
-#   branches:
-#     - main
-#     - uat
+ push:
+   branches:
+     - main
+     - uat
 
 jobs:
   build-and-push:
