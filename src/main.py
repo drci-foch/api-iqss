@@ -9,6 +9,7 @@ import traceback
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
+import time
 
 from config import settings
 from generate_files import generate_report_data
@@ -71,11 +72,14 @@ async def generate_report_by_date(request: ReportRequest):
 
         # Génération du rapport (données)
         # data, stats_validation, stats_diffusion
+        t_report_start = time.perf_counter()
         data, stats_validation = generate_report_data(
             start_date=request.start_date,
             end_date=request.end_date,
             sejour_list=request.sejour_list,
         )
+        t_report_end = time.perf_counter()
+        print(f"[PROFILING] generate_report_data: {t_report_end - t_report_start:.3f}s")
 
         # Création du nom de fichier (pour le téléchargement uniquement)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -90,12 +94,16 @@ async def generate_report_by_date(request: ReportRequest):
 
         # Génération du fichier Excel en mémoire
         try:
+            t_excel_start = time.perf_counter()
             excel_bytes = generate_excel(
                 stats_validation=stats_validation,
                 # stats_diffusion,
                 period=period,
                 df_analysis=data,  # Ajouter le DataFrame
             )
+            t_excel_end = time.perf_counter()
+            print(f"[PROFILING] generate_excel: {t_excel_end - t_excel_start:.3f}s")
+            print(f"[PROFILING] TOTAL /api/report/by-date: {t_excel_end - t_report_start:.3f}s")
 
         except Exception as excel_error:
             print(f"Erreur génération Excel : {excel_error}")
@@ -134,11 +142,14 @@ async def generate_report_by_sejours(request: ReportBySejoursRequest):
             )
 
         # data, stats_validation, stats_diffusion
+        t_report_start = time.perf_counter()
         data, stats_validation = generate_report_data(
             start_date=None,
             end_date=None,
             sejour_list=request.sejour_ids,
         )
+        t_report_end = time.perf_counter()
+        print(f"[PROFILING] generate_report_data: {t_report_end - t_report_start:.3f}s")
 
         if data.empty:
             raise HTTPException(
@@ -153,12 +164,16 @@ async def generate_report_by_sejours(request: ReportBySejoursRequest):
 
         # Génération du fichier Excel en mémoire
         try:
+            t_excel_start = time.perf_counter()
             excel_bytes = generate_excel(
                 stats_validation=stats_validation,
                 # stats_diffusion=stats_diffusion,
                 period=f"{nb_sejours} séjours sélectionnés",
                 df_analysis=data,
             )
+            t_excel_end = time.perf_counter()
+            print(f"[PROFILING] generate_excel: {t_excel_end - t_excel_start:.3f}s")
+            print(f"[PROFILING] TOTAL /api/report/by-sejours: {t_excel_end - t_report_start:.3f}s")
         except Exception as excel_error:
             print(f"Erreur génération Excel : {excel_error}")
             traceback.print_exc()

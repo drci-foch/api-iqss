@@ -1,4 +1,5 @@
 import pandas as pd
+import time
 from config import settings
 from typing import Dict, List, Optional, Tuple
 
@@ -39,21 +40,34 @@ def generate_report_data(
         print(f"Utilisation du chemin fourni: {matrice_path}")
 
     # 1. Récupérer les données des séjours (GAM)
-
+    t0 = time.perf_counter()
     sejours = get_sejours_data(start_date, end_date, sejour_list)
+    t1 = time.perf_counter()
+    print(f"[PROFILING] get_sejours_data (GAM/Oracle): {t1 - t0:.3f}s ({len(sejours)} lignes)")
 
     # 2. Récupérer les données des documents (EASILY)
     documents = get_documents_data(start_date, end_date)
+    t2 = time.perf_counter()
+    print(f"[PROFILING] get_documents_data (EASILY/SQL Server): {t2 - t1:.3f}s ({len(documents)} lignes)")
 
     # 3. Fusionner les données
     data = merge_sejours_documents(sejours, documents)
+    t3 = time.perf_counter()
+    print(f"[PROFILING] merge_sejours_documents: {t3 - t2:.3f}s")
 
     # 4. Calculer les statistiques de validation
-
     stats_validation = calculate_validation_stats(data, matrice_path=matrice_path)
+    t4 = time.perf_counter()
+    print(f"[PROFILING] calculate_validation_stats: {t4 - t3:.3f}s")
 
     # 5. Calculer les statistiques de diffusion
-
     # stats_diffusion = calculate_diffusion_stats(data, matrice_path=matrice_path)
+
+    print(f"\n[PROFILING] === generate_report_data SUMMARY ===")
+    print(f"[PROFILING]   DB séjours (GAM):      {t1 - t0:.3f}s")
+    print(f"[PROFILING]   DB documents (EASILY):  {t2 - t1:.3f}s")
+    print(f"[PROFILING]   Merge/traitement:       {t3 - t2:.3f}s")
+    print(f"[PROFILING]   Stats validation:       {t4 - t3:.3f}s")
+    print(f"[PROFILING]   TOTAL:                  {t4 - t0:.3f}s\n")
 
     return data, stats_validation  # , stats_diffusion

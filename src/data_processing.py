@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Optional
 import unicodedata
+import time
 from config import settings
 
 
@@ -169,12 +170,16 @@ def merge_sejours_documents(
     if matrice_sej_path is None:
         matrice_sej_path = settings.MATRICE_SEJ_PATH
 
+    t_total_start = time.perf_counter()
+    timings = {}
+
     sejours = sejours.copy()
     documents = documents.copy()
 
     # ========================================
     # ÉTAPE 1 : PRÉPARATION DES DONNÉES
     # ========================================
+    t_step = time.perf_counter()
 
     sejours["pat_ipp"] = sejours["pat_ipp"].astype(str)
     documents["pat_ipp"] = documents["pat_ipp"].astype(str)
@@ -186,15 +191,22 @@ def merge_sejours_documents(
 
     documents["doc_key_norm"] = documents["doc_key"].apply(normalize_text)
 
+    timings["1_preparation"] = time.perf_counter() - t_step
+
     # ========================================
     # ÉTAPE 2 : JOINTURE SÉJOURS × DOCUMENTS SUR IPP (R ligne 181)
     # ========================================
+    t_step = time.perf_counter()
 
     data = sejours.merge(documents, on="pat_ipp", how="left", suffixes=("", "_doc"))
+
+    timings["2_jointure_ipp"] = time.perf_counter() - t_step
+    print(f"[PROFILING]   Après jointure IPP: {len(data)} lignes (séjours={len(sejours)}, docs={len(documents)})")
 
     # ========================================
     # ÉTAPE 3 : JOINTURE AVEC MATRICE DE SPÉCIALITÉ (R ligne 184)
     # ========================================
+    t_step = time.perf_counter()
 
     try:
         matrice = load_matrice_specialite(matrice_path)
@@ -209,9 +221,12 @@ def merge_sejours_documents(
         print(f"Impossible de charger la matrice : {e}")
         data["sej_spe"] = None
 
+    timings["3_jointure_matrice"] = time.perf_counter() - t_step
+
     # ========================================
     # ÉTAPE 4 : CONVERSION DES DATES
     # ========================================
+    t_step = time.perf_counter()
 
     data["sej_sor"] = pd.to_datetime(data["sej_sor"])
     data["sej_ent"] = pd.to_datetime(data["sej_ent"])
@@ -223,9 +238,12 @@ def merge_sejours_documents(
     if "doc_modmere" in data.columns:
         data["doc_modmere"] = pd.to_datetime(data["doc_modmere"])
 
+    timings["4_conversion_dates"] = time.perf_counter() - t_step
+
     # ========================================
     # ÉTAPE 5 : CALCUL DES CRITÈRES BOOLÉENS (R lignes 188-213)
     # ========================================
+    t_step = time.perf_counter()
 
     # 1. sdt_docven (R ligne 190-191)
     if "doc_venue" in data.columns:
@@ -285,9 +303,12 @@ def merge_sejours_documents(
         data["sdt_status"], (data["doc_val"] - data["sej_sor"]).dt.days, np.nan
     )
 
+    timings["5_criteres_booleens"] = time.perf_counter() - t_step
+
     # ========================================
     # ÉTAPE 6 : PREMIER TRI - pref_sorval (R lignes 220-221)
     # ========================================
+    t_step = time.perf_counter()
     # R: arrange(is.na(sej_spe), del_sorval) |> mutate(pref_sorval=row_number())
 
     # Créer colonne pour le tri (True si sej_spe est NA → à mettre en dernier)
@@ -303,9 +324,12 @@ def merge_sejours_documents(
     # Calculer pref_sorval par groupe sej_id
     data["pref_sorval"] = data.groupby("sej_id").cumcount() + 1
 
+    timings["6_tri_pref_sorval"] = time.perf_counter() - t_step
+
     # ========================================
     # ÉTAPE 7 : DEUXIÈME TRI - pref_ficmere (R lignes 224-225)
     # ========================================
+    t_step = time.perf_counter()
     # R: arrange(is.na(sej_spe), desc(sdt_docven), desc(sdt_emere), desc(sdt_status), desc(sdt_doccref), del_sorval)
     #    mutate(pref_ficmere=row_number())
 
@@ -326,16 +350,22 @@ def merge_sejours_documents(
     # Calculer pref_ficmere par groupe sej_id
     data["pref_ficmere"] = data.groupby("sej_id").cumcount() + 1
 
+    timings["7_tri_pref_ficmere"] = time.perf_counter() - t_step
+
     # ========================================
     # ÉTAPE 8 : SÉLECTION DU MEILLEUR DOCUMENT (R ligne 230)
     # ========================================
+    t_step = time.perf_counter()
     # R: filter(.by=c(pat_ipp,sej_id), pref_ficmere==min(pref_ficmere))
 
     data_best = data[data["pref_ficmere"] == 1].copy()
 
+    timings["8_selection_meilleur_doc"] = time.perf_counter() - t_step
+
     # ========================================
     # ÉTAPE 9 : GESTION DES DOCUMENTS MULTI-SÉJOURS (R lignes 232-237)
     # ========================================
+    t_step = time.perf_counter()
     # R:
     # group_by(doc_id) |>
     # arrange(del_sorval) |>
@@ -376,9 +406,13 @@ def merge_sejours_documents(
     else:
         print("Aucun document multi-séjours")
 
+    timings["9_multi_sejours"] = time.perf_counter() - t_step
+    print(f"[PROFILING]   Multi-séjours docs: {len(multi_sejour_docs)} docs concernés")
+
     # ========================================
     # ÉTAPE 10 : CALCUL DE del_val APRÈS multi-séjours (R ligne 241)
     # ========================================
+    t_step = time.perf_counter()
     # R: del_val=case_when(is.na(del_sorval)|is.infinite(del_sorval)|is.na(sej_spe) ~ NA,
     #                      TRUE ~ max(0,del_sorval))
 
@@ -396,9 +430,12 @@ def merge_sejours_documents(
         axis=1,
     )
 
+    timings["10_del_val"] = time.perf_counter() - t_step
+
     # ========================================
     # ÉTAPE 11 : CLASSIFICATION sej_classe (R lignes 243-247)
     # ========================================
+    t_step = time.perf_counter()
     # R: sej_classe=factor(case_when(del_val==0 ~ 0, del_val>0 ~ 1, TRUE ~ 2),
     #                      levels = c(0, 1, 2), labels = status_libelle)
 
@@ -412,9 +449,12 @@ def merge_sejours_documents(
 
     data_best["sej_classe"] = data_best["del_val"].apply(classify_sejour)
 
+    timings["11_classification"] = time.perf_counter() - t_step
+
     # ========================================
     # ÉTAPE 11.5 : FALLBACK SPÉCIALITÉ pour séjours AVEC doc mais sej_spe = NaN
     # ========================================
+    t_step = time.perf_counter()
     # Si le merge iql_matspe_7 (sej_uf + doc_key) n'a pas trouvé de spécialité,
     # on utilise mat_spe_sej (uf_sortie seul) en dernier recours.
     # ⚠️ Pour désactiver ce fallback, commenter le bloc ci-dessous.
@@ -435,9 +475,12 @@ def merge_sejours_documents(
         except Exception as e:
             print(f"Impossible de charger la matrice séjours pour fallback : {e}")
 
+    timings["11.5_fallback_spe_avec_doc"] = time.perf_counter() - t_step
+
     # ========================================
     # ÉTAPE 12 : AJOUT DES SÉJOURS SANS DOCUMENT + FALLBACK SPÉCIALITÉ
     # ========================================
+    t_step = time.perf_counter()
 
     sejours_sans_doc = sejours[~sejours["sej_id"].isin(data_best["sej_id"])].copy()
 
@@ -470,6 +513,8 @@ def merge_sejours_documents(
     else:
         data_final = data_best
 
+    timings["12_sejours_sans_doc"] = time.perf_counter() - t_step
+
     # ========================================
     # VÉRIFICATIONS FINALES
     # ========================================
@@ -479,6 +524,16 @@ def merge_sejours_documents(
     for col in cols_to_drop:
         if col in data_final.columns:
             data_final.drop(columns=[col], inplace=True)
+
+    # Afficher le profiling
+    t_total = time.perf_counter() - t_total_start
+    print(f"\n[PROFILING] === merge_sejours_documents ===")
+    for step, duration in timings.items():
+        pct = (duration / t_total) * 100
+        bar = "█" * int(pct / 2)
+        print(f"[PROFILING]   {step:.<40s} {duration:6.3f}s ({pct:5.1f}%) {bar}")
+    print(f"[PROFILING]   {'TOTAL':.<40s} {t_total:6.3f}s")
+    print(f"[PROFILING]   Résultat: {len(data_final)} lignes")
 
     return data_final
 
@@ -502,6 +557,8 @@ def calculate_validation_stats(df: pd.DataFrame, matrice_path: str = None) -> Di
     # Utiliser le chemin depuis settings si non fourni
     if matrice_path is None:
         matrice_path = settings.MATRICE_PATH
+
+    t_stats_start = time.perf_counter()
 
     # Statistiques globales
     total_sejours_all = len(df)
@@ -547,6 +604,9 @@ def calculate_validation_stats(df: pd.DataFrame, matrice_path: str = None) -> Di
         key=lambda x: (x["taux_validation_j0_over_sejours"], x["total_sejours"]),
         reverse=True,
     )
+
+    t_stats_end = time.perf_counter()
+    print(f"[PROFILING] calculate_validation_stats: {t_stats_end - t_stats_start:.3f}s ({len(df['sej_spe'].dropna().unique())} spécialités)")
 
     return {
         "total_sejours_all": int(total_sejours_all),
