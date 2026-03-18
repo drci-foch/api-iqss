@@ -661,7 +661,8 @@ def calculate_validation_stats(df: pd.DataFrame, matrice_path: str = None) -> Di
     total_sejours_all = len(df)
 
     # =================TABLEAU GAELLE SUR VALIDATION==================
-    nb_ll_validees_all = df["doc_val"].notna().sum()
+    # Nb LL validées = séjours avec une LL réellement attribuée (0j ou 1j+), pas juste doc_val renseigné
+    nb_ll_validees_all = (df["sej_classe"].isin(["0j", "1j+"])).sum()
     taux_validation_J0_over_sejours_all = float((df["sej_classe"] == "0j").mean() * 100)
     df["del_sorval"] = df["del_sorval"].where(df["del_sorval"] >= 0, 0)
     delai_validation_moyenne_all = df["del_sorval"].mean()
@@ -674,7 +675,8 @@ def calculate_validation_stats(df: pd.DataFrame, matrice_path: str = None) -> Di
         total_sejours = len(df_spe)
 
         # =================TABLEAU GAELLE SUR VALIDATION==================
-        nb_ll_validees = df_spe["doc_val"].notna().sum()
+        # Nb LL validées = séjours avec une LL réellement attribuée (0j ou 1j+)
+        nb_ll_validees = (df_spe["sej_classe"].isin(["0j", "1j+"])).sum()
         taux_validation_J0_over_sejours = float(
             (df_spe["sej_classe"] == "0j").mean() * 100
         )
@@ -744,7 +746,8 @@ def calculate_diffusion_stats(df: pd.DataFrame, matrice_path: str = None) -> Dic
     total_sejours_all = len(df)
 
     # =================TABLEAU GAELLE SUR DIFFUSION==================
-    nb_ll_validees_all = df["doc_val"].notna().sum()
+    # Nb LL validées = séjours avec LL réellement attribuée (0j ou 1j+)
+    nb_ll_validees_all = (df["sej_classe"].isin(["0j", "1j+"])).sum()
 
     nb_LL_diffuses_all = df["date_diffusion"].notna().sum()
     pct_diffuses_sur_validees_all = (
@@ -780,7 +783,8 @@ def calculate_diffusion_stats(df: pd.DataFrame, matrice_path: str = None) -> Dic
         # =================TABLEAU GAELLE SUR DIFFUSION==================
 
         nb_LL_diffuses = df_spe["date_diffusion"].notna().sum()
-        nb_ll_validees = df_spe["doc_val"].notna().sum()
+        # Nb LL validées = séjours avec LL réellement attribuée (0j ou 1j+)
+        nb_ll_validees = (df_spe["sej_classe"].isin(["0j", "1j+"])).sum()
         pct_diffuses_sur_validees = (
             nb_LL_diffuses / nb_ll_validees * 100 if nb_ll_validees > 0 else 0.0
         )
