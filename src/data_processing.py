@@ -121,7 +121,7 @@ def create_doc_key(libelle: str) -> str:
         "foch",
         "hdj",
         "cs",
-        "\\.",
+        ".",
         "ll",
     ]
 
@@ -130,6 +130,65 @@ def create_doc_key(libelle: str) -> str:
 
     key = key.strip()
     return key
+
+
+def apply_temporal_filter(data, sejours):
+    """
+    Filtre temporel : élimine les documents qui appartiennent à un autre séjour.
+
+    Après la jointure sur pat_ipp, chaque séjour est associé à TOUS les documents
+    du patient. Ce filtre ne garde que les documents qui appartiennent réellement
+    au séjour courant :
+    - Si doc_venue == sej_id → garder (doc explicitement rattaché)
+    - Si doc_venue != sej_id ET doc_venue renseigné → éliminer (doc d'un autre séjour)
+    - Si doc_venue null → garder seulement si :
+        * doc_cre >= sej_ent - 5j (borne basse : doc pas créé avant le séjour)
+        * doc_cre < date d'entrée du prochain séjour (borne haute)
+    - Si pas de prochain séjour → pas de borne haute
+    - Si pas de doc (left join) → garder
+    """
+    sejours_sorted = sejours.sort_values(["pat_ipp", "sej_ent"]).copy()
+    sejours_sorted["next_sej_ent"] = sejours_sorted.groupby("pat_ipp")["sej_ent"].shift(-1)
+
+    data = data.merge(
+        sejours_sorted[["sej_id", "next_sej_ent"]],
+        on="sej_id", how="left"
+    )
+
+    data["_sej_id_num"] = pd.to_numeric(data["sej_id"], errors="coerce")
+    data["_doc_venue_num"] = pd.to_numeric(data["doc_venue"], errors="coerce")
+    data["doc_cre"] = pd.to_datetime(data["doc_cre"])
+    data["sej_ent"] = pd.to_datetime(data["sej_ent"])
+    data["next_sej_ent"] = pd.to_datetime(data["next_sej_ent"])
+
+    n_before = len(data)
+
+    # Borne basse pour docs sans venue : doc créé au plus tôt 5 jours avant l'entrée
+    borne_basse = data["sej_ent"] - pd.Timedelta(days=5)
+
+    mask_keep = (
+        # Cas 1 : doc explicitement lié à ce séjour
+        (data["_doc_venue_num"] == data["_sej_id_num"])
+        # Cas 2 : doc_venue null → filtrer par bornes temporelles
+        | (
+            data["_doc_venue_num"].isna()
+            & (data["doc_cre"] >= borne_basse)
+            & (
+                data["next_sej_ent"].isna()
+                | (data["doc_cre"] < data["next_sej_ent"])
+            )
+        )
+        # Cas 3 : pas de doc (séjour sans document, left join)
+        | data["doc_id"].isna()
+    )
+
+    data = data[mask_keep].copy()
+    data.drop(columns=["_sej_id_num", "_doc_venue_num", "next_sej_ent"], inplace=True)
+
+    n_after = len(data)
+    print(f"[FILTRE TEMPOREL] {n_before} → {n_after} lignes ({n_before - n_after} docs d'autres séjours éliminés)")
+
+    return data
 
 
 def merge_sejours_documents(
@@ -204,6 +263,15 @@ def merge_sejours_documents(
     print(f"[PROFILING]   Après jointure IPP: {len(data)} lignes (séjours={len(sejours)}, docs={len(documents)})")
 
     # ========================================
+    # ÉTAPE 2.5 : FILTRE TEMPOREL - Éliminer les docs d'autres séjours
+    # ========================================
+    t_step = time.perf_counter()
+
+    data = apply_temporal_filter(data, sejours)
+
+    timings["2.5_filtre_temporel"] = time.perf_counter() - t_step
+
+    # ========================================
     # ÉTAPE 3 : JOINTURE AVEC MATRICE DE SPÉCIALITÉ (R ligne 184)
     # ========================================
     t_step = time.perf_counter()
@@ -211,11 +279,27 @@ def merge_sejours_documents(
     try:
         matrice = load_matrice_specialite(matrice_path)
 
+        # Double merge : d'abord uf_sortie complet (ex: 438B), puis sej_uf tronqué (ex: 438)
+        # Cela permet d'avoir des règles spécifiques par sous-UF (ex: 438B → UHCD pour SOS AIT)
+        matrice_full = matrice[["sej_uf", "doc_key_norm", "sej_spe"]].copy()
+
+        # 1. Merge sur uf_sortie complet (ex: "438B")
         data = data.merge(
-            matrice[["sej_uf", "doc_key_norm", "sej_spe"]],
+            matrice_full.rename(columns={"sej_uf": "uf_sortie", "sej_spe": "sej_spe_full"}),
+            on=["uf_sortie", "doc_key_norm"],
+            how="left",
+        )
+
+        # 2. Merge sur sej_uf tronqué (ex: "438") — fallback
+        data = data.merge(
+            matrice_full.rename(columns={"sej_spe": "sej_spe_trunc"}),
             on=["sej_uf", "doc_key_norm"],
             how="left",
         )
+
+        # Priorité : uf_sortie complet d'abord, puis sej_uf tronqué en fallback
+        data["sej_spe"] = data["sej_spe_full"].fillna(data["sej_spe_trunc"])
+        data.drop(columns=["sej_spe_full", "sej_spe_trunc"], inplace=True)
 
     except Exception as e:
         print(f"Impossible de charger la matrice : {e}")
@@ -360,6 +444,15 @@ def merge_sejours_documents(
 
     data_best = data[data["pref_ficmere"] == 1].copy()
 
+    # Règle VDB : patient sorti/hébergé de Vanderbilt (UF 338) = toujours séjour VDB
+    # La LL est comptée pour VDB quelle que soit la spécialité qui l'a rédigée
+    mask_vdb = data_best["sej_uf"] == "338"
+    if mask_vdb.any():
+        n_override = (mask_vdb & (data_best["sej_spe"] != "VANDERBILT")).sum()
+        data_best.loc[mask_vdb, "sej_spe"] = "VANDERBILT"
+        if n_override > 0:
+            print(f"[VDB] {n_override} séjours UF 338 forcés à VANDERBILT")
+
     timings["8_selection_meilleur_doc"] = time.perf_counter() - t_step
 
     # ========================================
@@ -463,6 +556,8 @@ def merge_sejours_documents(
     if mask_spe_manquante.any():
         try:
             matrice_sej = load_matrice_specialite_sejours(matrice_sej_path)
+            # mat_spe_sej utilise le code UF complet (ex: "423A"),
+            # donc on utilise uf_sortie (complet) et non sej_uf (tronqué à 3 chars)
             fallback_map = matrice_sej.set_index("sej_uf")["sej_spe_normalisee"]
             data_best.loc[mask_spe_manquante, "sej_spe"] = data_best.loc[
                 mask_spe_manquante, "uf_sortie"
@@ -491,12 +586,14 @@ def merge_sejours_documents(
                 sejours_sans_doc[col] = np.nan
 
         # Fallback spécialité : pour les séjours sans document,
-        # on utilise mat_spe_sej (sej_uf seul) pour attribuer une spécialité
+        # on utilise mat_spe_sej (uf_sortie complet) pour attribuer une spécialité
+        # Note: mat_spe_sej utilise le code UF complet (ex: "423A"),
+        # donc on merge sur uf_sortie et non sej_uf (tronqué à 3 chars)
         try:
             matrice_sej = load_matrice_specialite_sejours(matrice_sej_path)
             sejours_sans_doc = sejours_sans_doc.merge(
-                matrice_sej[["sej_uf", "sej_spe_normalisee"]],
-                on="sej_uf",
+                matrice_sej[["sej_uf", "sej_spe_normalisee"]].rename(columns={"sej_uf": "uf_sortie"}),
+                on="uf_sortie",
                 how="left",
             )
             # Remplir sej_spe avec la spécialité du fallback
