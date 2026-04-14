@@ -1034,6 +1034,7 @@ def generate_excel(
     period: str,
     stats_diffusion: Optional[Dict] = None,
     df_analysis: Optional[pd.DataFrame] = None,
+    include_raw_data: bool = True,
 ) -> bytes:
     """
     Générer le fichier Excel avec toutes les feuilles et le retourner en mémoire.
@@ -1050,7 +1051,7 @@ def generate_excel(
     t_excel_total = time.perf_counter()
     timings = {}
 
-    has_data = df_analysis is not None and not df_analysis.empty
+    has_data = df_analysis is not None and not df_analysis.empty and include_raw_data
 
     if has_data:
         # ============================================================

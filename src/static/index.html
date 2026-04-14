@@ -509,10 +509,61 @@
     .hidden {
       display: none !important;
     }
+
+    .user-bar {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 12px;
+      padding: 8px 16px;
+      background: #f0f4f8;
+      border-bottom: 1px solid #e0e7ff;
+      font-size: 12px;
+      color: var(--text-muted);
+      grid-column: 1 / -1;
+    }
+
+    .user-bar .user-info {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .user-bar .user-role {
+      background: var(--foch-blue-light);
+      color: var(--foch-blue-dark);
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+    }
+
+    .user-bar a,
+    .user-bar button {
+      border: none;
+      background: transparent;
+      color: var(--foch-blue);
+      font-size: 12px;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      padding: 0;
+    }
   </style>
 </head>
 <body>
   <div class="app-shell">
+    <!-- Barre utilisateur -->
+    <div class="user-bar">
+      <span class="user-info">
+        <span id="user-display"></span>
+        <span class="user-role" id="user-role-badge"></span>
+      </span>
+      <a href="/admin" id="admin-link" style="display:none;">Administration</a>
+      <button id="btn-logout">Se déconnecter</button>
+    </div>
+
     <!-- Bandeau marque / contexte -->
     <aside class="brand-panel">
       <div class="brand-header">
@@ -703,6 +754,39 @@
   </div>
 
   <script>
+    // --- Auth check ---
+    const token = localStorage.getItem("token");
+    if (!token) {
+      window.location.href = "/login";
+    }
+
+    // Afficher infos utilisateur
+    const userDisplay = document.getElementById("user-display");
+    const userRoleBadge = document.getElementById("user-role-badge");
+    const adminLink = document.getElementById("admin-link");
+    const storedUsername = localStorage.getItem("username") || "";
+    const storedRole = localStorage.getItem("role") || "";
+
+    userDisplay.textContent = storedUsername;
+    userRoleBadge.textContent = storedRole;
+    if (storedRole === "admin") {
+      adminLink.style.display = "inline";
+    }
+
+    document.getElementById("btn-logout").addEventListener("click", () => {
+      localStorage.removeItem("token");
+      localStorage.removeItem("role");
+      localStorage.removeItem("username");
+      window.location.href = "/login";
+    });
+
+    function authHeaders() {
+      return {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + token,
+      };
+    }
+
     // --- Helpers DOM ---
     const byDateTab = document.getElementById("tab-by-date");
     const bySejoursTab = document.getElementById("tab-by-sejours");
@@ -778,15 +862,19 @@
         try {
           const response = await fetch("/api/report/by-date", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers: authHeaders(),
             body: JSON.stringify({
               start_date: startDate,
               end_date: endDate,
               sejour_list: sejourList.length ? sejourList : null,
             }),
           });
+
+          if (response.status === 401) {
+            localStorage.removeItem("token");
+            window.location.href = "/login";
+            return;
+          }
 
           if (!response.ok) {
             let msg = "Erreur lors de la génération du rapport.";
@@ -858,13 +946,17 @@
         try {
           const response = await fetch("/api/report/by-sejours", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers: authHeaders(),
             body: JSON.stringify({
               sejour_ids: sejourIds,
             }),
           });
+
+          if (response.status === 401) {
+            localStorage.removeItem("token");
+            window.location.href = "/login";
+            return;
+          }
 
           if (!response.ok) {
             let msg = "Erreur lors de la génération du rapport.";
