@@ -7,7 +7,7 @@ from pathlib import Path
 
 # Définir les chemins de base
 BASE_DIR = Path(__file__).parent.parent  # Remonte à api-iqss/
-DATA_DIR = BASE_DIR / "data" / "db"
+DATA_DIR = BASE_DIR / "static-data"
 
 
 class Settings(BaseSettings):
@@ -31,6 +31,25 @@ class Settings(BaseSettings):
     # Configuration Générale
     APP_TITLE: str = "Indicateurs Lettres de Liaison"
     APP_VERSION: str = "1.0.0"
+
+    # Environnement : "production" | "uat" | "development"
+    APP_ENV: str = "development"
+
+    # Authentification
+    JWT_SECRET_KEY: str = "changeme-in-production"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRATION_MINUTES: int = 480  # 8 heures
+
+    # LDAP (utilisé uniquement si APP_ENV=production)
+    LDAP_SERVER: str = ""
+    LDAP_BASE_DN: str = ""
+
+    # Admin seed (créé au démarrage si aucun admin n'existe)
+    ADMIN_SEED_USERNAME: str = "admin"
+    ADMIN_SEED_PASSWORD: str = "admin"
+
+    # Base SQLite pour les utilisateurs
+    DB_PATH: str = str(BASE_DIR / "data" / "auth.db")
 
     class Config:
         env_file = ".env"
