@@ -3,8 +3,9 @@ name: CI/CD
 on:
  push:
    branches:
-     - uat 
- pull_request: # uniquement sur validation
+     - uat
+     - main
+ pull_request:
    branches:
      - main
 
