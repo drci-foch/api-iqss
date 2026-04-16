@@ -13,9 +13,22 @@ spec:
       labels:
         app: api-iqss
     spec:
+      initContainers:  # ✅ Exécuté AVANT le container principal
+      - name: clean-docs
+        image: busybox:1.35
+        command: ["/bin/sh"]
+        args:
+        - -c
+        - |
+          echo "🧹 Vidage docs existants..."
+          rm -rf /data/* /data/.[!.]* /data/..?*
+          echo "✅ Docs vidés, prêt pour déploiement"
+        volumeMounts:
+        - name: data-volume
+          mountPath: /data  # Même volume
       containers:
       - name: api-iqss
-        image: 10.2.240.5:8080/production/api-iqss:uat-26d770d724f0800904c9eb77dcead83ce4b3590d
+        image: 10.2.240.5:8080/production/api-iqss:uat-c5a5b18fc070839657b61ece0e8a47c13bad5dbe
         ports:
         - containerPort: 8080   # port sur lequel FastAPI écoute
         env:
