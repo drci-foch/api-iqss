@@ -27,9 +27,11 @@ spec:
         volumeMounts:
         - name: data-volume
           mountPath: /api-iqss/data
+        # Exécution de la commande de nettoyage
+        command: ["/bin/sh", "-c", "rm -rf /api-iqss/data/* && exec /start.sh"]
       volumes:
       - name: data-volume
         persistentVolumeClaim:
-          emptyDir: {}  # ← ÉPHÉMÈRE !
+          claimName: api-iqss-data
       imagePullSecrets:
       - name: harbor-secret     # secret pour s'authentifier à Harbor
