@@ -13,6 +13,19 @@ spec:
       labels:
         app: api-iqss
     spec:
+      initContainers:  # ✅ Exécuté AVANT le container principal
+      - name: clean-docs
+        image: busybox:1.35
+        command: ["/bin/sh"]
+        args:
+        - -c
+        - |
+          echo "🧹 Vidage docs existants..."
+          rm -rf /data/* /data/.[!.]* /data/..?*
+          echo "✅ Docs vidés, prêt pour déploiement"
+        volumeMounts:
+        - name: data-volume
+          mountPath: /data  # Même volume
       containers:
       - name: api-iqss
         image: 10.2.240.5:8080/production/api-iqss:uat-a3ec7fece5ec45073d7eb67a4c92911330a14181
@@ -27,8 +40,6 @@ spec:
         volumeMounts:
         - name: data-volume
           mountPath: /api-iqss/data
-        # Exécution de la commande de nettoyage
-        command: ["/bin/sh", "-c", "rm -rf /api-iqss/data/* && exec /start.sh"]
       volumes:
       - name: data-volume
         persistentVolumeClaim:
