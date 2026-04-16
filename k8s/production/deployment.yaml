@@ -18,8 +18,18 @@ spec:
         image: 10.2.240.5:8080/production/api-iqss:prod-478715fab0ceaeb2641cd871ebd54eea4ebb1897
         ports:
         - containerPort: 8080   # port sur lequel FastAPI écoute
+        env:
+        - name: APP_ENV
+          value: "production"
         envFrom:
         - secretRef:
             name: api-iqss-secret
+        volumeMounts:
+        - name: data-volume
+          mountPath: /api-iqss/data
+      volumes:
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: api-iqss-data
       imagePullSecrets:
       - name: harbor-secret     # secret pour s'authentifier à Harbor

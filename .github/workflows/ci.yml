@@ -8,6 +8,7 @@ on:
 
 jobs:
   build-and-push:
+    if: github.event.pull_request.merged == true || github.ref == 'refs/heads/uat'
     runs-on: self-hosted
     steps:
       - name: Checkout code
@@ -39,6 +40,23 @@ jobs:
       - name: Push image
         run: |
           docker push 10.2.240.5:8080/production/api-iqss:${{ env.IMAGE_TAG }}
+
+      - name: Ensure PVC exists
+        run: |
+          kubectl apply -f k8s/${{ env.NAMESPACE == 'default' && 'production' || 'uat' }}/pvc.yaml
+
+      - name: Update secret
+        run: |
+          kubectl create secret generic api-iqss-secret \
+            --namespace=${{ env.NAMESPACE }} \
+            --from-literal=GAM_USER=${{ secrets.GAM_USER }} \
+            --from-literal=GAM_PASSWORD=${{ secrets.GAM_PASSWORD }} \
+            --from-literal=ESL_USER=${{ secrets.ESL_USER }} \
+            --from-literal=ESL_PASSWORD=${{ secrets.ESL_PASSWORD }} \
+            --from-literal=JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }} \
+            --from-literal=ADMIN_SEED_PASSWORD=${{ secrets.ADMIN_SEED_PASSWORD }} \
+            ${{ env.NAMESPACE == 'default' && format('--from-literal=LDAP_SERVER={0} --from-literal=LDAP_BASE_DN={1}', secrets.LDAP_SERVER, secrets.LDAP_BASE_DN) || '' }} \
+            --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Update deployment image
         run: |

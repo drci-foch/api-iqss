@@ -6,7 +6,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
-COPY data/ /api-iqss/data/
+COPY data/db/ /api-iqss/static-data/
 
 EXPOSE 8080
 

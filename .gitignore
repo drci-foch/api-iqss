@@ -211,6 +211,12 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# Claude Code
+.claude/
+
+# SQLite auth database
+data/auth.db
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
