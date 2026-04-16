@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: api-iqss
-        image: 10.2.240.5:8080/production/api-iqss:prod-33a75bc8d4e31b0de9395a5c816cbe65f3e244c6
+        image: 10.2.240.5:8080/production/api-iqss:prod-6d203958132549ffd3f40bc3cf7807a774215f67
         ports:
         - containerPort: 8080   # port sur lequel FastAPI écoute
         env:
