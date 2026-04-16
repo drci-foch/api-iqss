@@ -28,7 +28,7 @@ spec:
           mountPath: /data  # Même volume
       containers:
       - name: api-iqss
-        image: 10.2.240.5:8080/production/api-iqss:prod-d4587533a5c58583002650a0f8dd8b7d093946e5
+        image: 10.2.240.5:8080/production/api-iqss:prod-768102b0d7030f1b38c3ae09cc1c221b86cf5d95
         ports:
         - containerPort: 8080   # port sur lequel FastAPI écoute
         env:
