@@ -20,6 +20,8 @@ jobs:
        
       - name: Set environment
         run: |
+          echo github.ref
+          echo github.event.pull_request.merged
           if [ "${{ github.ref }}" == "refs/heads/main" ]; then
             echo "NAMESPACE=default" >> $GITHUB_ENV
             echo "IMAGE_TAG=prod-${{ github.sha }}" >> $GITHUB_ENV
