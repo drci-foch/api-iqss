@@ -30,6 +30,6 @@ spec:
       volumes:
       - name: data-volume
         persistentVolumeClaim:
-          claimName: api-iqss-data
+          emptyDir: {}  # ← ÉPHÉMÈRE !
       imagePullSecrets:
       - name: harbor-secret     # secret pour s'authentifier à Harbor
