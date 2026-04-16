@@ -3,8 +3,10 @@ name: CI/CD
 on:
  push:
    branches:
-     - main
      - uat
+ pull_request:
+   branches:
+     - main
 
 jobs:
   build-and-push:
