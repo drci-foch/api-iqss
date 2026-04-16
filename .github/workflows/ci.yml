@@ -12,7 +12,8 @@ on:
 
 jobs:
   build-and-push:
-    if: github.event.pull_request.merged == true || github.ref == 'refs/heads/uat'
+    if: |
+      (github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main') || github.ref == 'refs/heads/uat'
     runs-on: self-hosted
     steps:
       - name: Checkout code
@@ -20,8 +21,6 @@ jobs:
        
       - name: Set environment
         run: |
-          echo github.ref
-          echo github.event.pull_request.merged
           if [ "${{ github.ref }}" == "refs/heads/main" ]; then
             echo "NAMESPACE=default" >> $GITHUB_ENV
             echo "IMAGE_TAG=prod-${{ github.sha }}" >> $GITHUB_ENV
