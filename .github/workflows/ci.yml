@@ -7,17 +7,9 @@ on:
  pull_request: # uniquement sur validation
    branches:
      - main
-   types:
-     - closed
 
 jobs:
   build-and-push:
-    name: |
-      ${{ 
-        github.event.pull_request.merged == 'true' && 
-        format('🚀 PROD Deploy (PR #{0})', github.event.pull_request.number) ||
-        '🐳 UAT Deploy'
-      }}
     if: |
       (github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main') || github.ref == 'refs/heads/uat'
     runs-on: self-hosted
